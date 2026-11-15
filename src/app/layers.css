@@ -1,0 +1,11 @@
+/*
+ * Cascade layer order, declared before every other stylesheet so the order holds.
+ *
+ * The bundler hoists imported stylesheets above inline rules, so this order has
+ * to live in its own file that is imported first.
+ *
+ * Astryx's reset and component styles must outrank Tailwind's preflight, or a
+ * zero-specificity `* { padding: 0 }` erases every component's spacing. Tailwind
+ * utilities come last so app utility classes keep winning over components.
+ */
+@layer reset, theme, base, astryx-base, astryx-theme, components, utilities;
