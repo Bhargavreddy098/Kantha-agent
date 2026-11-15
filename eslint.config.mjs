@@ -17,6 +17,7 @@ const eslintConfig = defineConfig([
     ".gstack/**",
     ".gateway-fixtures/**",
     ".gateway-browser/**",
+    "my-app/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
