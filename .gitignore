@@ -46,3 +46,5 @@ next-env.d.ts
 /.gateway-browser/
 /.gateway-fixtures/
 /.gateway-data/
+
+my-app/
