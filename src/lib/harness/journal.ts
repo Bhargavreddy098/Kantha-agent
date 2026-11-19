@@ -142,10 +142,10 @@ export class HarnessJournal implements IHarnessJournal {
   reclaim(runId: string, ownerId: string, leaseMs: number, scope: HarnessScope): HarnessClaim | null {
     return this.store.write(() => {
       const existing = this.store.get<HarnessClaim>(claims, scope.workspaceId, runId);
-      if (!existing || existing.expiresAt > Date.now()) return null;
+      if (existing && existing.expiresAt > Date.now()) return null;
       const claim: HarnessClaim = {
         runId,
-        generation: existing.generation + 1,
+        generation: (existing?.generation ?? 0) + 1,
         ownerId,
         expiresAt: Date.now() + leaseMs,
       };

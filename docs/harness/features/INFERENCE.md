@@ -8,6 +8,8 @@ The gateway resolves the authorized connection, model, credentials, egress and d
 
 A normalized response carries text deltas, complete tool calls with stable IDs, terminal state and permitted usage metadata. Argument fragments stay in the model stream buffer until the call is complete. The next request includes the correlated assistant tool calls and recorded tool results. Each physical provider attempt reserves usage before dispatch and reconciles once, including cancellation or unknown usage. Provider retries remain bounded by gateway policy.
 
+For v1, persist the complete ordered call list before scheduling, then process one call at a time in provider order. A pending decision blocks all later calls in that batch, including reads. On policy denial, expiry or a tool failure that requires replanning, record a terminal result for the affected call and a correlated skipped result for each unstarted sibling if the run will make another inference request. Stop, revocation and unresolved effects end continuation and record which calls were skipped. Recovery resumes the same ordered list and reuses committed results. The next provider request carries one correlated result per call in the preceding batch.
+
 ## Build order and integration
 
 1. Use a scripted provider to establish a full fixture exchange with text, a complete call, a matching tool result and a final response. Include a cancelled and malformed stream.

@@ -13,6 +13,8 @@ The registry owns tool registration and lookup. Tool invocation owns schema vali
 | Invocation | Stable call and action identities, pinned definition, normalized arguments, workspace reference and execution claim. Evaluate authority before dispatch. |
 | Result | One terminal outcome correlated to the call ID, bounded model-facing content, optional validated machine output and compact safe UI metadata. Larger artifacts use authorized references. |
 
+The [inference contract](INFERENCE.md) owns batch ordering and skipped siblings. The [approval contract](APPROVALS.md) owns the authoritative rendering of a proposed effect. Project tool summaries from an allowlisted UI representation and use the [evidence contract](PERSISTENCE.md#evidence-artifacts) for detailed output.
+
 ## Build order and integration
 
 1. Define the first registry and wire an inert tool to the scripted [session runner](SESSIONS.md). Use the [existing inert fixture](../../../src/lib/gateway/server/approval-service.ts) for gateway behavior evidence.

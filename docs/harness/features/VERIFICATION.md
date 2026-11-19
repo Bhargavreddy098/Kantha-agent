@@ -8,6 +8,10 @@ The task plan owns observable acceptance criteria and the declared check referen
 
 Each criterion has a stable ID, behavior, check reference and required status. Each result records run, criterion, command or review identity, workspace revision or diff digest, status and evidence reference. A changed candidate invalidates affected prior evidence. A required unavailable check blocks success. Judgment-based review uses task requirements, the diff and check evidence independently of the implementer’s reasoning.
 
+For free-text tasks, a read-only planning step proposes observable outcomes using task intent, repository guidance and discovery. The gateway-selected repository profile supplies the eligible check and review definitions. The verification boundary validates the mapping, pins the plan and approved check versions at the pre-edit boundary, and persists required versus optional criteria. The model may suggest scenarios. It cannot authorize commands or weaken required checks. Show the pinned criteria in Run details as soon as they are available.
+
+For v1, unresolved material choices end the run before affected writes with `clarification_required` and a concrete question. The user can answer in a new submission with a new input ID and a newly pinned plan. A change to required outcomes after pinning also requires fresh admission. Keep evidence tied to the original candidate and plan. An unavailable required check produces a blocked criterion and a failed run with a concrete next action.
+
 ## Completion and repair decisions
 
 - The runner's request to finish starts verification. Only the verification service can produce a passing verdict. Record an explicit result for every required criterion, including criteria that could not be evaluated. Check the supported entry point when the user requested a behavior that spans components.

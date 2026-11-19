@@ -8,6 +8,8 @@ The browser submits task intent and observes execution. The gateway authorizes a
 
 Publish safe run, approval, tool, verification and terminal states. Deduplicate projected runtime events by stable source identity, and order public events by the gateway cursor. Recover expired cursors from a fresh snapshot and its watermark. Stop is a command against the same public run and needs server acknowledgement.
 
+Use the [repository task browser contract](PROJECTION-CONTRACT.md) for discovery, the durable link between a run and its Chat turn, history status, and the versioned snapshot and event semantics. Resolve action review in that turn and the Run details surface described in the [UX](../UX.md).
+
 ## Build order and integration
 
 1. Map existing [chat](../../../src/app/chat/page.tsx), [chat API](../../../src/app/api/chat/route.ts), [event API](../../../src/app/api/gateway/events/route.ts), [event feed](../../../src/lib/gateway/runs/event-feed.ts) and [client contracts](../../../src/lib/gateway/client.ts).

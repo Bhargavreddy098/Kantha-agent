@@ -8,12 +8,20 @@ The gateway owns authenticated repository grants, action decisions and business 
 
 The durable sequence is proposed → waiting for approval or authorized → intent recorded → dispatch → terminal result. Denial, expiry, cancellation and revocation can end work before dispatch. An uncertain effect enters reconciliation. A matching authoritative receipt can settle it. Otherwise stop dependent work and surface interruption. Approval binds the actor, scope, run, action ID, arguments, tool version and expiry. A changed action requires a fresh decision.
 
+The action policy and executor derive the operation label, target, parameters, expected effect and patch preview from the exact normalized action and expected workspace state. Bind the preview digest and baseline identity to the decision when preview bytes are involved. A changed target, arguments, or expected state invalidates the old decision. Render agent rationale as optional context clearly attributed to the agent. Only present **Approve once** when the actor can inspect the entire required decision material.
+
+## Unresolved effects
+
+When the executor lacks a conclusive receipt, persist an unresolved action and an interrupted handoff. The gateway fences dependent work on the affected target. V1 exposes the handoff in Chat and an operator-only command against the original run and action. The command takes a stable decision ID, expected action version, disposition, evidence reference, and reason. The gateway derives the actor and scope from authenticated context.
+
+Supported dispositions establish applied, establish no effect, or retain unresolved. The executor or workspace authority verifies the evidence against the target before the gateway records a conclusive disposition. Atomically record the decision, resulting effect state and whether the fence can be released. Replay the same decision idempotently and reject conflicting versions or payloads. Preserve the original verdict and audit entry. Subsequent dependent work requires fresh admission. User acknowledgement alone cannot reconcile the effect.
+
 ## Build order and integration
 
 1. Characterize [ingress](../../../src/lib/gateway/server/ingress.ts), the [approval service](../../../src/lib/gateway/server/approval-service.ts) and [approval contract](../../../src/lib/gateway/contracts/approval.ts) using the inert fixture.
 2. Add a single normalized action policy shared across executors. Persist pending approval with a stable ID, expiry and version. Authorize the deciding actor and apply the decision idempotently.
 3. Persist dispatch intent before the executor can start. Recheck current scope and claim at the executors’ enforcement boundary. Recover the same intent and reconcile before repetition.
-4. Connect the runtime to the [approval panel](../../../src/components/gateway/approval-panel.tsx) through [authorized projections](CHAT-EVENTS.md). Log actor and action identity, decision and outcome in the appropriate audit record.
+4. Connect the runtime to the approval row in the originating Chat turn and its review section in Run details through the [browser contract](PROJECTION-CONTRACT.md). Use the legacy approval panel as fixture evidence for the gateway decision boundary. Log actor and action identity, decision and outcome in the appropriate audit record.
 
 ## Acceptance scenarios
 

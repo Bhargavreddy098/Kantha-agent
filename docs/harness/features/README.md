@@ -16,6 +16,7 @@ Use the [repository task UX](../UX.md) for the Chat flow, wireframes and browser
 | [Permissions, approvals and action recovery](APPROVALS.md) | Action authorization, durable approval, intent and reconciliation | H3–H4 · A4, A5, A8 |
 | [Verification, evidence and handoff](VERIFICATION.md) | Acceptance criteria, check results, bounded repair and completion verdict | H0, H4–H5 · A7, A8 |
 | [Chat integration, events and run recovery](CHAT-EVENTS.md) | Authorized commands, streaming, projections and browser recovery | H1, H5 · A1, A6, A8 |
+| [Repository task browser contract](PROJECTION-CONTRACT.md) | Discovery, task submission, conversation history, snapshots and event replay | H3, H5 · A1, A2, A6, A8 |
 | [Persistence and transcript portability](PERSISTENCE.md) | Transactional journal, PostgreSQL deployment, JSONL export and backup recovery | H1, H5 · A2, A5, A6, A8 |
 | [Observability and evaluation](OPERATIONS.md) | OTel signals, SigNoz diagnostics and repository qualification suite | H0–H1, H5 · A8, A9 |
 

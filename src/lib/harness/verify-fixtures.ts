@@ -344,6 +344,58 @@ export interface HarnessFixtureResult {
   errors: string[];
 }
 
+async function assertInterruptedAdmissionRedelivery(): Promise<void> {
+  const db = new GatewayDatabase(':memory:');
+  const runs = new GatewayRunService(db, new GatewayApprovalService(db));
+  try {
+    const ctx = { ...scope, caller: { type: 'user' as const, id: scope.actorId }, timestamp: Date.now() };
+    for (const trigger of ['replay', 'recovery'] as const) {
+      const session = await runs.createSession({ title: 'Interrupted harness admission' }, ctx);
+      const input = { ...rawSubmission('pass', `interrupted-${trigger}`), sessionId: session.id };
+      const first = createHarness(db, runs);
+      first.journal.admit = () => { throw new Error('Injected failure after gateway commit'); };
+      let failedAtBoundary = false;
+      try {
+        await first.service.submit(input, scope);
+      } catch (error) {
+        failedAtBoundary = error instanceof Error && error.message === 'Injected failure after gateway commit';
+      }
+      expect(failedAtBoundary, 'delivery fails after the mapping is committed');
+
+      const restarted = createHarness(db, runs);
+      const foreignRecovery = await restarted.service.recoverOpen({ ...scope, actorId: 'usr_other' });
+      expect(foreignRecovery.length === 0, 'another actor cannot deliver the persisted input');
+      if (trigger === 'recovery') {
+        const recovered = await restarted.service.recoverOpen(scope);
+        expect(recovered.length === 1 && recovered[0].status === 'completed', 'recovery delivers the original input');
+      } else {
+        let conflicted = false;
+        try {
+          await restarted.service.submit({ ...input, scope: { ...input.scope, allowedRoots: ['other/'] } }, scope);
+        } catch (error) {
+          conflicted = error instanceof HarnessError && error.code === 'conflict';
+        }
+        expect(conflicted, 'a changed payload cannot replace the persisted input before journal admission');
+      }
+      const [firstReplay, secondReplay] = await Promise.all([
+        restarted.service.submit(input, scope),
+        restarted.service.submit(input, scope),
+      ]);
+      expect(firstReplay.replayed && firstReplay.runId === secondReplay.runId, 'replay keeps the public run identity');
+      let view = await restarted.service.view(firstReplay.runId, scope);
+      for (let attempt = 0; attempt < 40 && view?.outcome === undefined; attempt += 1) {
+        await delay(25);
+        view = await restarted.service.view(firstReplay.runId, scope);
+      }
+      expect(view?.outcome?.status === 'completed', 'the admitted input finishes');
+      expect(view?.entries.filter((entry) => entry.type === 'tool_result').length === 1, 'redelivery executes one tool call');
+    }
+  } finally {
+    runs.shutdown();
+    db.close();
+  }
+}
+
 export async function runHarnessFixtureVerification(): Promise<HarnessFixtureResult> {
   const checks: Array<[string, () => void | Promise<void>]> = [
     ['scripted run completes with correlated tool and passing verification', assertPassingRun],
@@ -354,6 +406,7 @@ export async function runHarnessFixtureVerification(): Promise<HarnessFixtureRes
     ['recovery reconciles pending intent before continuing', assertPendingRecovery],
     ['durable state is projected as gap-free versioned events', assertProjectionEvents],
     ['gateway store and run service project one replayable, cancellable run', assertServiceIntegration],
+    ['interrupted admission is recovered under the original run identity', assertInterruptedAdmissionRedelivery],
   ];
   const errors: string[] = [];
   for (const [name, check] of checks) {

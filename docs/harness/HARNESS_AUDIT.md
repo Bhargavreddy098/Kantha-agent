@@ -1,34 +1,11 @@
-# Harness Engineering Audit
+# Harness implementation status
 
-## Executive Assessment
-This audit evaluates the Kantha repository against the harness engineering principles outlined in `docs/harness/harnessfile.md`. While the documentation layer is strong, the implementation, evaluation, and verification layers require significant maturation to achieve production-grade reliability.
+| Area | Evidence and remaining gate |
+| --- | --- |
+| H0–H1 | SQLite fixtures cover the bounded runner, one inert tool, verification, writer fencing, replay, Stop and admission redelivery. See the [fixture handoff](HANDOFF-H0-H1.md). |
+| H2 | Qualify a real provider tool conversation, per-attempt accounting, and recovery on the chosen hosting topology. |
+| H3 | Qualify repository grants, instruction and skill loading, bounded context, and scoped changes in the isolated workspace profile. |
+| H4 | Qualify durable action decisions, evidence, repairs, and operator disposition of uncertain effects. |
+| H5 | Qualify production Chat, authorized history and evidence, storage restore, and the repository evaluation suite. |
 
-## Implementation Inventory
-
-| Subsystem | Documentation | Implementation | Integrated | Automated Verification | Evidence |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Instructions** | High | Partial | Yes | No | `docs/harness/HARNESS.md`, `AGENTS.md` |
-| **Tools** | High | Yes | Yes | Partial | `docs/harness/features/TOOLS.md` |
-| **Environment** | Medium | Yes | Yes | No | Docker/Node setup implicit |
-| **State** | Low | Partial | No | No | `docs/harness/features/SESSIONS.md` |
-| **Feedback** | Medium | Partial | No | No | `docs/harness/features/VERIFICATION.md` |
-
-## Missing Harness Capabilities
-- **Persistent Session State**: No centralized state manager (ACID-compliant) for agent work.
-- **Robust Feedback Loop**: No automated, independent evaluator for implementation tasks.
-- **Initialization Phase**: No explicit bootstrap phase in the agent loop.
-- **Execution Graph**: No structured orchestration for multi-step agent tasks.
-
-## Prioritized Implementation Roadmap
-1. **[High] Implementation State Manager**: Centralize session state (`PROGRESS.md` or similar machine-readable format).
-2. **[High] Independent Evaluation Harness**: Implement the Maker-Checker evaluator pattern.
-3. **[Medium] Initialization Lifecycle**: Explicitly build an initialization phase into the agent entry point.
-4. **[Medium] Automated E2E Verification**: Build structured integration and E2E test suites for core user journeys.
-
----
-*Status Classifications:*
-- Implemented and verified: None.
-- Implemented but unverified: Tools, Environment.
-- Documented but not implemented: State Management, Feedback Loop.
-- Missing: Independent Evaluation, Execution Graph.
-- Requires architectural decision: Session Persistence.
+The [implementation plan](IMPLEMENTATION-PLAN.md) owns release acceptance. The [feature map](features/README.md) leads to the active contracts, and the [source guide](SOURCES.md) records their design inputs.

@@ -10,7 +10,15 @@ import {
   type HarnessRunView,
 } from './contracts';
 import type { IHarnessJournal, IHarnessProjection, IHarnessStore } from './contracts';
+import { submissionDigest } from './journal';
 import { HarnessRunner } from './runner';
+
+interface MappedSubmission {
+  runId: string;
+  actorId: string;
+  submission: HarnessSubmission;
+  digest: string;
+}
 
 const defaultProfile: HarnessRunProfile = {
   maxSteps: 6,
@@ -133,18 +141,39 @@ export class HarnessService {
       }],
       system: 'You are executing a bounded harness task.',
     };
-    const started = await this.services.runs.beginRun(input, ctx);
-    const admission = this.services.journal.admit(submission, started.run.id, scope);
-    this.services.store.put('harness_submissions', scope.workspaceId, started.run.id, submission);
-
-    if (started.created) {
-      const claim = this.services.journal.claim(started.run.id, `runner_${scope.requestId}`, submission.pinned.profile.leaseMs, scope);
-      void this.services.runner.execute(submission, started.run.id, claim, scope)
-        .catch((error: unknown) => {
-          console.error('Harness runner failed', { requestId: scope.requestId, error: error instanceof Error ? error.message : 'UnknownError' });
+    const { store, journal, runner, runs } = this.services;
+    const digest = submissionDigest(submission);
+    const started = await runs.beginRun(input, ctx, (run) => {
+      // The gateway invokes this inside the mapping transaction.
+      const mapped = store.get<MappedSubmission>('harness_inbox', scope.workspaceId, run.id);
+      const admitted = journal.getByRun(run.id, scope);
+      if ((mapped && (mapped.actorId !== scope.actorId || mapped.digest !== digest)) ||
+          (admitted && admitted.digest !== digest)) {
+        throw new HarnessError('conflict', 'This input identity belongs to a different harness submission.');
+      }
+      if (!mapped && run.status === 'running') {
+        store.put<MappedSubmission>('harness_inbox', scope.workspaceId, run.id, {
+          runId: run.id,
+          actorId: scope.actorId,
+          submission,
+          digest,
         });
+      }
+    });
+    const { id: runId, status } = started.run;
+
+    if (status === 'running') {
+      journal.admit(submission, runId, scope);
+      if (journal.getCheckpoint(runId, scope)?.phase === 'admitted') {
+        const claim = journal.reclaim(runId, `runner_${scope.requestId}`, submission.pinned.profile.leaseMs, scope);
+        if (claim) {
+          void runner.execute(submission, runId, claim, scope).catch((error: unknown) => {
+            console.error('Harness runner failed', { requestId: scope.requestId, error: error instanceof Error ? error.message : 'UnknownError' });
+          });
+        }
+      }
     }
-    return { runId: admission.runId, replayed: !started.created, status: 'running' };
+    return { runId, replayed: !started.created, status };
   }
 
   async view(runId: string, scope: HarnessScope): Promise<HarnessRunView | null> {
@@ -172,15 +201,24 @@ export class HarnessService {
   /** Recover open runs whose writer lease expired using only durable records. */
   async recoverOpen(scope: HarnessScope): Promise<HarnessOutcome[]> {
     const { store, journal, runs, runner } = this.services;
-    const open = journal.listOpen(scope);
+    const mapped = store.list<MappedSubmission>('harness_inbox', scope.workspaceId);
+    const mappedRunIds = new Set(mapped.map(({ runId }) => runId));
+    const deliveries = new Map(mapped
+      .filter(({ actorId }) => actorId === scope.actorId)
+      .map(({ runId, submission }) => [runId, submission]));
+    for (const { runId } of journal.listOpen(scope)) {
+      if (mappedRunIds.has(runId)) continue;
+      const submission = store.get<HarnessSubmission>('harness_submissions', scope.workspaceId, runId);
+      if (submission) deliveries.set(runId, submission);
+    }
     const outcomes: HarnessOutcome[] = [];
-    for (const admission of open) {
-      const submission = store.get<HarnessSubmission>('harness_submissions', scope.workspaceId, admission.runId);
-      const run = await runs.getRun(admission.runId, toRequestContext(scope));
-      if (!submission || !run || run.status !== 'running') continue;
-      const claim = journal.reclaim(admission.runId, `recovery_${scope.requestId}`, submission.pinned.profile.leaseMs, scope);
+    for (const [runId, submission] of deliveries) {
+      const run = await runs.getRun(runId, toRequestContext(scope));
+      if (run?.status !== 'running') continue;
+      journal.admit(submission, runId, scope);
+      const claim = journal.reclaim(runId, `recovery_${scope.requestId}`, submission.pinned.profile.leaseMs, scope);
       if (!claim) continue;
-      outcomes.push(await runner.resume(submission, admission.runId, claim, scope));
+      outcomes.push(await runner.resume(submission, runId, claim, scope));
     }
     return outcomes;
   }

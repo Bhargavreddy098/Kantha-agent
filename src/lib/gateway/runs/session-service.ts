@@ -164,11 +164,19 @@ export class GatewayRunService implements IRunService {
     });
   }
 
-  async beginRun(input: SubmitRunInput, ctx: RequestContext): Promise<{ run: GatewayRun; created: boolean }> {
+  async beginRun(
+    input: SubmitRunInput,
+    ctx: RequestContext,
+    // Persist delivery metadata synchronously in the same transaction as the mapping.
+    persistDelivery?: (run: GatewayRun) => void,
+  ): Promise<{ run: GatewayRun; created: boolean }> {
     return this.db.write(() => {
       const session = this.refreshActiveRun(this.requireSession(input.sessionId, ctx), ctx);
       const existing = this.findSubmission(input, ctx);
-      if (existing) return { run: existing, created: false };
+      if (existing) {
+        persistDelivery?.(existing);
+        return { run: existing, created: false };
+      }
       if (session.session.activeRunId || session.session.status !== 'active') {
         throw new GatewayError({ code: 'conflict', message: 'This session cannot start another run yet', requestId: ctx.requestId, resource: input.sessionId });
       }
@@ -203,6 +211,7 @@ export class GatewayRunService implements IRunService {
       session.latestRunId = run.id;
       session.messages = [...known.values()];
       recordSessionEvent(this.db, session, 'run.state_changed', { previousState: 'queued', newState: 'running' }, run.id);
+      persistDelivery?.(run);
       return { run, created: true };
     });
   }

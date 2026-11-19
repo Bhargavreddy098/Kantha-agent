@@ -12,7 +12,7 @@ Status: H0 baseline and H1 durable single-session runner are implemented in code
 
 ## Checks run
 
-- `node scripts/test-harness-fixtures.mjs` — 8 assertions passed, including a real `GatewayDatabase(':memory:')` + `GatewayRunService` integration proving replay, conflict, streamed deltas, terminal status, Stop and event projection.
+- `node scripts/test-harness-fixtures.mjs` — 9 assertions passed, including a real `GatewayDatabase(':memory:')` + `GatewayRunService` integration proving replay, conflict, streamed deltas, terminal status, Stop and event projection. Fault injection after the mapping commits and before journal admission verifies request replay and durable recovery while the gateway run lease is active. Both deliver the original input and record one inert tool result.
 - `node scripts/test-gateway-fixtures.mjs` — 54 baseline assertions passed.
 - `npx eslint` on all harness files — clean.
 - TypeScript: no errors in files touched by this handoff (full-repo `tsc`/`next build` type check is blocked by pre-existing errors in the untracked `packages/ui` tests and missing local `@/components/ui/*` modules in this worktree). Webpack production compile succeeds.
@@ -21,6 +21,7 @@ Status: H0 baseline and H1 durable single-session runner are implemented in code
 
 - Browser E2E and staging smoke (A1, A6, A8) are not yet run; they require a complete production build and a qualified environment.
 - H2 real provider inference and per-attempt accounting, H3 workspace/skill tooling, H4 approvals and bounded repair, and H5 release qualification remain unimplemented.
+- The fixture gateway still expires a run when its lease elapses. Delayed restart and redelivery after that window require qualification and a durable hosting lifecycle under H2.
 - The full build's type check fails on unrelated existing files; restore or replace the deleted local UI modules and install the `@astryxdesign/*` test dependencies before treating the build as green.
 
 ## Next action

@@ -71,6 +71,8 @@ stateDiagram-v2
 
 These phases are internal. Project admission and preflight as queued or running, and approval wait as `waiting_for_approval`. During recovery, use the last durable checkpoint to resume the same phase or finalize as `interrupted`. A required check that cannot run produces a blocked criterion and a failed run with a typed reason. Reuse the existing public run vocabulary for initial integration.
 
+The [browser projection](features/PROJECTION-CONTRACT.md#snapshot-and-events) carries a safe phase alongside the gateway status. V1 returns a typed clarification handoff when a material decision blocks work. A user's answer starts a new task under the [verification contract](features/VERIFICATION.md). Unresolved action effects follow the [operator disposition contract](features/APPROVALS.md#unresolved-effects).
+
 | Boundary | Required behavior |
 | --- | --- |
 | Admit and prepare | Persist stable submission identity and input digest before delivery. Same key and payload return the same run, and a different payload conflicts. Pin workspace/repository identity, base revision, environment profile, agent and skill versions, model selection, tool configuration and the acceptance plan. Record baseline changes and verification availability before edits. |

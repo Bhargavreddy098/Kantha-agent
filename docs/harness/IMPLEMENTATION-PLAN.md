@@ -15,6 +15,8 @@
 
 H0 and H1 use the current application composition and scripted fixtures to validate the contract. The [handoff](HANDOFF-H0-H1.md) records implementation and evidence. Evaluate an OpenWorker adapter against the same journal, cancellation, isolated execution and gateway-accounting requirements before selecting it. Scope any runtime-facing native inference contract separately and demonstrate complete tool conversation round trips before using it. Choose the runtime adapter and topology after the qualification evidence is available.
 
+For H2, verify delayed redelivery on the selected hosting topology and complete ordered call/result continuation, including denied and skipped siblings. For H3, qualify the [workspace profile](features/WORKSPACE.md#first-production-workspace-profile) and context budget before repository effects. For H4, implement free-text acceptance planning, trusted action review, evidence artifacts and operator disposition. For H5, qualify the [browser contract](features/PROJECTION-CONTRACT.md) and [UX](UX.md) with production-shaped snapshots, mixed history and reload-safe submissions.
+
 ## Acceptance matrix
 
 | ID | Scenario | Required result | Level |

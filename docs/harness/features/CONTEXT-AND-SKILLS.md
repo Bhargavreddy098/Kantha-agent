@@ -10,6 +10,8 @@ Skill discovery returns ID, description, applicability, source and version or di
 
 Persist the agent version, instruction sources and selected skill digests with the run. Preserve the original journal through compaction. Checkpoint derived summary coverage, retain unresolved calls and criteria, and include only journal entries past the summary watermark on replay.
 
+Pin a context profile per selected model. Reserve output and any provider-specific reasoning allowance before budgeting input. Count tool schemas and message framing with the pinned tokenizer or a conservative documented estimator. Preserve task scope, required criteria, applicable mandatory instructions, current tool schemas, and unresolved call/result pairs. Trim optional references and inactive skill detail first, then compact the oldest complete exchanges when the next request would exceed its input budget. Persist summary coverage and keep the original events. If the mandatory set cannot fit, end with a typed context limit and name the unavailable capacity. Provider-private reasoning stays out of the portable journal and UI. Qualify model-specific limits and the trigger during H2–H3.
+
 ## Build order and integration
 
 1. Define fixture agent profiles and skill bundles, including duplicate IDs, conflicting instructions, an unavailable version and references outside the eligible source.

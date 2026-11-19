@@ -23,6 +23,12 @@ Use the Claude Code-inspired append-only session history pattern with a Kantha-o
 - Write finalized local exports via a temporary file and atomic publication. A reader can report a trailing partial line in an interrupted local export and recover only its complete prefix for inspection. A finalized archive with invalid records or checksum mismatch must fail validation. A JSONL export cannot authorize a resume. Resume uses the canonical journal, current grants and a verified workspace checkpoint.
 - Enforce workspace-scoped reads and exports, retention, deletion and restore behavior for events, artifacts and backups. Keep ordinary chat's transcript subject to its existing application contract. Treat authorized transcript content as sensitive and exclude it from default telemetry.
 
+## Evidence artifacts
+
+Use versioned manifests with opaque artifact ID, kind, run ID, candidate digest, producing check or action ID, media type, checksum, stored byte size, truncation flag, creation time and retention expiry. The gateway returns authorized references. The first supported formats are a scoped UTF-8 unified patch, a bounded plain-text check log, and structured check evidence that references its output and exit outcome. A bounded output carries a visible truncation indicator. Snapshot check status and elapsed progress are sufficient for v1. Live log streaming requires its own authorized delivery contract.
+
+Normalize control sequences and enforce output bounds. Scrub configured secrets from captured logs and withhold evidence that fails its publication policy. Run redaction before durable publication and test it with synthetic canaries. Repository patches are scoped sensitive content. Apply the artifact policy and artifact-specific access checks before preview or download. Shared deployments use the private object store. A supported local artifact profile uses a dedicated private directory outside served roots, atomic publication and the same scoped reference and checksum rules. The H1 fixture uses synthetic evidence labels.
+
 ## Qualification and migration
 
 1. Replay the scripted SQLite scenarios against the PostgreSQL adapter with production-like roles and pooling. Race submissions and competing writers. Inject disconnects before and after commit, then prove no duplicate results, ledger settlements or resumed effects. Exercise unauthorized reads and tampered or truncated exports.

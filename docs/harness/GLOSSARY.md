@@ -1,5 +1,5 @@
 ## Glossary
-This file defines the domain terminology for Kantha Harness Engineering, derived from `docs/harness/harnessfile.md`.
+This glossary uses the terminology in the [harness specification](HARNESS.md) and [feature contracts](features/README.md).
 
 ### Core Concepts
 

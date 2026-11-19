@@ -31,6 +31,7 @@ export type Collection =
   | 'attempts'
   | 'harness_admissions'
   | 'harness_submissions'
+  | 'harness_inbox'
   | 'harness_checkpoints'
   | 'harness_claims'
   | 'harness_journals'
