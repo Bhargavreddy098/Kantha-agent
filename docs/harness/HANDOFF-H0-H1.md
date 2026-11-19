@@ -17,6 +17,18 @@ Status: H0 baseline and H1 durable single-session runner are implemented in code
 - `npx eslint` on all harness files — clean.
 - TypeScript: no errors in files touched by this handoff (full-repo `tsc`/`next build` type check is blocked by pre-existing errors in the untracked `packages/ui` tests and missing local `@/components/ui/*` modules in this worktree). Webpack production compile succeeds.
 
+## Fixture limits
+
+| Bound | H0–H1 implementation |
+| --- | --- |
+| Service defaults | 6 model steps, 0 repair rounds, 30 seconds elapsed limit and a 15-second writer lease. The elapsed check runs between model steps. |
+| Chat fixture overrides | 4 model steps, 0 repair rounds and a 20-second elapsed limit. |
+| Tool dispatch | One call at a time. The inert tool definition caps model-facing result text at 8,192 UTF-8 bytes. |
+| UI evidence | The fixture snapshot returns up to 128 recent journal entries. The fixture panel previews the first 240 UTF-16 code units of serialized entry data. The snapshot has no separate UI byte cap. |
+| Approval expiry | The gateway's inert approval expires after 5 minutes. The harness runner fixture has no durable approval pause. |
+
+These values describe fixture behavior. Production staging starts with the [proposed run profile](HARNESS.md#proposed-v1-run-profile).
+
 ## Unresolved work
 
 - Browser E2E and staging smoke (A1, A6, A8) are not yet run; they require a complete production build and a qualified environment.

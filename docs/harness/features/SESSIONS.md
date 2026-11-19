@@ -17,6 +17,8 @@ The [persistence contract](PERSISTENCE.md) defines journal atomicity, canonical 
 
 Persist the canonical input and its digest with the public run mapping, or use a transactional outbox when the stores differ. The runner can claim durable inputs whose journal admission or first writer claim was interrupted. An identical replay or recovery scan can deliver the pending input. A payload change conflicts even before journal admission. A terminal gateway run is observed as terminal. H2 hosting must qualify delayed restart and define how an undispatched durable input stays eligible across its supported outage window. Use the [browser contract](PROJECTION-CONTRACT.md#discovery-and-admission) for reload-safe client replay.
 
+The authorized Chat timeline joins the gateway-only transcript and harness turns through stable IDs and turn sequence. Each retains its own durable owner. Carry context across modes using the [context contract](CONTEXT-AND-SKILLS.md), including the explicit prior-run link on clarification.
+
 ## Build order and integration
 
 1. Characterize the current [session service](../../../src/lib/gateway/runs/session-service.ts), [run contract](../../../src/lib/gateway/contracts/run.ts) and [adapter interfaces](../../../src/lib/gateway/contracts/adapters.ts).

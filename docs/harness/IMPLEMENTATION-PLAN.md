@@ -21,7 +21,7 @@ For H2, verify delayed redelivery on the selected hosting topology and complete 
 
 | ID | Scenario | Required result | Level |
 | --- | --- | --- | --- |
-| A1 | Ordinary chat and runtime-backed chat | Existing chat, models, AI SDK stream, Stop and authorized session reads work. Runtime events do not replace the chat transport. | Route and browser E2E |
+| A1 | Ordinary chat and repository tasks | Ordinary Chat keeps its AI SDK stream, models and Stop. Repository tasks stream assistant text and progress through the gateway SSE feed and hydrate from authorized snapshots. Both appear in the same ordered timeline after reload. | Route and browser E2E |
 | A2 | Duplicate and competing submissions | Identical resubmission returns the same run and conflicting payload returns a conflict. A busy session rejects distinct work and stale writers fail. Simulate a crash between public mapping and runtime admission to prove redelivery. | Contract and process integration |
 | A3 | Model continuation and spend | Tool call/result IDs survive the real provider round trip. Budget denial never dispatches. Successful, failed, cancelled and unknown outcomes reconcile per attempt. | Provider contract and staging |
 | A4 | Capability and instruction boundaries | Reject invalid input and access beyond authorized repository or scope. Confirm tools remain pinned across registration changes and revocation blocks dispatch. Skills and repository instructions cannot expand grants. | Contract and executor integration |

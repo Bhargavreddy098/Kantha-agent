@@ -4,7 +4,7 @@ Proposed harness integration. The gateway APIs and ordinary chat are the current
 
 ## Ownership and contract
 
-The browser submits task intent and observes execution. The gateway authorizes all commands, projections and artifact reads. The harness journal supplies durable run state. Keep the existing AI SDK UI-message stream for chat and the gateway snapshot and SSE contract for run status. Add harness-specific payloads through explicit versioned contracts where necessary.
+The browser submits task intent and observes execution. The gateway authorizes all commands, projections and artifact reads. The harness journal supplies durable run state. Ordinary Chat keeps the existing AI SDK UI-message response. Repository tasks return a JSON admission receipt and use the authorized gateway SSE feed for assistant text and progress. The timeline and run snapshots hydrate the committed text under stable message and part IDs.
 
 Publish safe run, approval, tool, verification and terminal states. Deduplicate projected runtime events by stable source identity, and order public events by the gateway cursor. Recover expired cursors from a fresh snapshot and its watermark. Stop is a command against the same public run and needs server acknowledgement.
 

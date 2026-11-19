@@ -57,7 +57,9 @@ The harness accepts a scoped submission containing the public session and run ID
 stateDiagram-v2
     [*] --> Admitted
     Admitted --> Preparing
-    Preparing --> Executing
+    Preparing --> Planning
+    Planning --> Executing: acceptance plan pinned
+    Planning --> Finalizing: clarification, blocked plan or cancellation
     Executing --> AwaitingApproval
     AwaitingApproval --> Executing: durable decision
     Executing --> Verifying: candidate output
@@ -69,13 +71,13 @@ stateDiagram-v2
     Finalizing --> [*]: outcome and cleanup recorded
 ```
 
-These phases are internal. Project admission and preflight as queued or running, and approval wait as `waiting_for_approval`. During recovery, use the last durable checkpoint to resume the same phase or finalize as `interrupted`. A required check that cannot run produces a blocked criterion and a failed run with a typed reason. Reuse the existing public run vocabulary for initial integration.
+Project the durable phases as `admitted`, `preparing`, `planning`, `executing`, `awaiting_approval`, `verifying` and `finalizing`. Admission can be gateway `queued`; active phases use `running` and approval wait uses `waiting_for_approval`. Project `recovering` while reestablishing authority, then resume the last durable phase or finalize as `interrupted`. Planning follows workspace preflight and may use gateway-metered inference and policy-allowed read-only tools. Candidate writes start only after the verifier pins the acceptance plan.
 
-The [browser projection](features/PROJECTION-CONTRACT.md#snapshot-and-events) carries a safe phase alongside the gateway status. V1 returns a typed clarification handoff when a material decision blocks work. A user's answer starts a new task under the [verification contract](features/VERIFICATION.md). Unresolved action effects follow the [operator disposition contract](features/APPROVALS.md#unresolved-effects).
+The [browser projection](features/PROJECTION-CONTRACT.md#snapshot-and-events) carries the phase alongside gateway status. A required check that cannot run produces a blocked criterion and a failed run with a typed reason. A material question produces a terminal `failed` run with `clarification_required` and a structured question. The UI labels it **Clarification needed**. An answer starts a new task linked to the original run under the [verification contract](features/VERIFICATION.md). Unresolved effects follow the [operator disposition contract](features/APPROVALS.md#unresolved-effects).
 
 | Boundary | Required behavior |
 | --- | --- |
-| Admit and prepare | Persist stable submission identity and input digest before delivery. Same key and payload return the same run, and a different payload conflicts. Pin workspace/repository identity, base revision, environment profile, agent and skill versions, model selection, tool configuration and the acceptance plan. Record baseline changes and verification availability before edits. |
+| Admit, prepare and plan | Persist stable submission identity and input digest before delivery. Same key and payload return the same run, and a different payload conflicts. Pin workspace/repository identity, base revision, environment profile, agent and skill versions, model selection and tool configuration. Record baseline changes and check availability in preflight, then pin the acceptance plan before edits. |
 | Claim and run | Fence claims with a monotonically increasing generation or equivalent storage-enforced mechanism. Check ownership at journal mutations and at action dispatch. Serialize delivery through the session owner. Keep durable state transitions distinct from live text and progress updates. |
 | Step and continue | Logical step, provider attempt and tool call have distinct stable identifiers. Persist completed calls and results in order before continuation. Enforce step, elapsed time, context, action and budget limits. Use the gateway policy for provider retries, with a separate reservation and settlement for each attempt. |
 | Wait and cancel | Persist exact pending action and expiry before releasing active execution. Resume on the same action identity and decision. Cancellation stops new dispatch, signals active operations and records acknowledged terminal state or unresolved work after reconciliation. |
@@ -116,5 +118,11 @@ Define observable task criteria during initialization. Store their IDs, checks a
 Capture the task and workspace revision or diff digest, checks and results, scoped artifact references, known baseline failures, incomplete criteria and next action. Revoke leases and stop owned processes on exit. Preserve useful authorized changes and pending reconciliation. Mark the run complete only when the required checks pass against the current output and cleanup has a recorded disposition.
 
 Pin maximum model steps, repair rounds, elapsed run time, concurrent actions and tool output sizes in the run profile. Choose and verify their values in H0 and stage qualification. Stop on exhausted limits, cancellation, or an unresolved effect. Return the last verified state and the next required action.
+
+### Proposed v1 run profile
+
+Use 24 total logical model steps, including planning and repair, a maximum of 2 repair rounds, and one in-flight tool action per run. Start qualification with a 20-minute wall-clock deadline from admission and a 5-minute approval TTL capped by the run deadline. Approval wait counts toward the deadline. Persist both timestamps so recovery preserves the original limits. The wall deadline stops further dispatch and signals active operations. Reconcile in-flight effects before publishing a terminal outcome.
+
+Cap model-facing text per tool result at 8,192 UTF-8 bytes and each projected UI activity summary at 1,024 UTF-8 bytes. Link separate bounded evidence when authorized. These proposed defaults require qualification under the chosen model and deployment profiles. The [fixture handoff](HANDOFF-H0-H1.md#fixture-limits) records the implemented values.
 
 Use the [acceptance matrix](IMPLEMENTATION-PLAN.md#acceptance-matrix) and [repository evaluation suite](features/OPERATIONS.md#repository-evaluation-suite) to verify this specification. The [persistence contract](features/PERSISTENCE.md) defines transactional recovery and transcript portability. The [source guide](SOURCES.md) traces design decisions.
