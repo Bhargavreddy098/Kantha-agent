@@ -1,10 +1,12 @@
+import { createHarness, type HarnessComposition } from '../../harness/create';
 import { ModelCatalog } from '../providers/model-catalog';
-import { OpenAIInferenceAdapter } from '../providers/openai-adapter';
 import { GatewayEventFeedService } from '../runs/event-feed';
 import { GatewayRunService } from '../runs/session-service';
+import { GatewayCapacity, readCapacityLimit } from './capacity';
 import { GatewayApprovalService } from './approval-service';
+import { GatewayChatService } from './chat-service';
 import { GatewayConnectionStore } from './connection-store';
-import { gatewayLifecycle, type GatewayLifecycleManager } from './lifecycle';
+import { GatewayLifecycleManager } from './lifecycle';
 import { GatewaySecretStore, loadGatewaySecretKey } from './secret-store';
 import { GatewayDatabase, defaultDatabasePath } from './storage/database';
 import { GatewayUsageService } from './usage-service';
@@ -14,11 +16,14 @@ export interface GatewayRegistry {
   secretStore: GatewaySecretStore;
   connectionStore: GatewayConnectionStore;
   modelCatalog: ModelCatalog;
-  inferenceAdapter: OpenAIInferenceAdapter;
+  chatService: GatewayChatService;
   eventFeed: GatewayEventFeedService;
+  inferenceCapacity: GatewayCapacity;
+  eventCapacity: GatewayCapacity;
   approvalService: GatewayApprovalService;
   usageService: GatewayUsageService;
   runService: GatewayRunService;
+  harness: HarnessComposition;
   checkStorage(): boolean;
   close(): void;
 }
@@ -33,23 +38,41 @@ export function createGatewayRegistry(options: { databasePath?: string; secretKe
     const secretStore = new GatewaySecretStore(database, options.secretKey ?? loadGatewaySecretKey(database));
     const connectionStore = new GatewayConnectionStore(database, secretStore);
     const modelCatalog = new ModelCatalog(connectionStore, secretStore);
-    const inferenceAdapter = new OpenAIInferenceAdapter();
     const approvalService = new GatewayApprovalService(database);
     const usageService = new GatewayUsageService(database);
     const runService = new GatewayRunService(database, approvalService);
     const eventFeed = new GatewayEventFeedService(database, (session, ctx) => runService.recoverSession(session, ctx));
+    const inferenceCapacity = new GatewayCapacity(
+      readCapacityLimit('GATEWAY_MAX_ACTIVE_INFERENCE', 32),
+      readCapacityLimit('GATEWAY_MAX_WORKSPACE_INFERENCE', 4),
+      'rate_limited',
+      'Inference',
+    );
+    const chatService = new GatewayChatService({
+      modelCatalog, connectionStore, secretStore, inferenceCapacity, runService, usageService,
+    });
+    const harness = createHarness(database, runService);
     return {
       lifecycle: gatewayLifecycle,
       secretStore,
       connectionStore,
       modelCatalog,
-      inferenceAdapter,
+      chatService,
       eventFeed,
+      inferenceCapacity,
+      eventCapacity: new GatewayCapacity(
+        readCapacityLimit('GATEWAY_MAX_ACTIVE_EVENT_STREAMS', 128),
+        readCapacityLimit('GATEWAY_MAX_WORKSPACE_EVENT_STREAMS', 12),
+        'subscriber_overflow',
+        'Event streaming',
+      ),
       approvalService,
       usageService,
       runService,
+      harness,
       checkStorage: () => database.check(),
       close: () => {
+        harness.service.shutdown();
         runService.shutdown();
         database.close();
       },
@@ -65,3 +88,6 @@ const globalGateway = globalThis as typeof globalThis & { kanthaGateway?: Gatewa
 export function getGatewayRegistry(): GatewayRegistry {
   return globalGateway.kanthaGateway ??= createGatewayRegistry();
 }
+
+// Probe registry initialization as part of readiness so startup failures still return a health response.
+export const gatewayLifecycle = new GatewayLifecycleManager(() => getGatewayRegistry().checkStorage());

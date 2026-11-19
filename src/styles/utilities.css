@@ -1,0 +1,261 @@
+/* Adapted from the MIT-licensed anomalyco/opencode packages/ui/src/styles at c658753fdb0e. See LICENSE.opencode.txt. */
+.text-12-regular {
+  font-family: var(--kantha-ref-font-family-sans);
+  font-size: var(--kantha-ref-font-size-small);
+  font-style: normal;
+  font-weight: var(--kantha-ref-font-weight-regular);
+  line-height: var(--kantha-ref-line-height-large); /* 166.667% */
+  letter-spacing: var(--kantha-ref-letter-spacing-normal);
+}
+
+.text-12-medium {
+  font-family: var(--kantha-ref-font-family-sans);
+  font-size: var(--kantha-ref-font-size-small);
+  font-style: normal;
+  font-weight: var(--kantha-ref-font-weight-medium);
+  line-height: var(--kantha-ref-line-height-large); /* 166.667% */
+  letter-spacing: var(--kantha-ref-letter-spacing-normal);
+}
+
+.text-12-mono {
+  font-family: var(--kantha-ref-font-family-mono);
+  font-feature-settings: var(--kantha-ref-font-family-mono--font-feature-settings);
+  font-size: var(--kantha-ref-font-size-small);
+  font-style: normal;
+  font-weight: var(--kantha-ref-font-weight-regular);
+  line-height: var(--kantha-ref-line-height-large); /* 166.667% */
+  letter-spacing: var(--kantha-ref-letter-spacing-normal);
+}
+
+.text-14-regular {
+  font-family: var(--kantha-ref-font-family-sans);
+  font-size: var(--kantha-ref-font-size-base);
+  font-style: normal;
+  font-weight: var(--kantha-ref-font-weight-regular);
+  line-height: var(--kantha-ref-line-height-x-large); /* 171.429% */
+  letter-spacing: var(--kantha-ref-letter-spacing-normal);
+}
+
+.text-14-medium {
+  font-family: var(--kantha-ref-font-family-sans);
+  font-size: var(--kantha-ref-font-size-base);
+  font-style: normal;
+  font-weight: var(--kantha-ref-font-weight-medium);
+  line-height: var(--kantha-ref-line-height-large); /* 171.429% */
+  letter-spacing: var(--kantha-ref-letter-spacing-normal);
+}
+
+.text-14-mono {
+  font-family: var(--kantha-ref-font-family-mono);
+  font-feature-settings: var(--kantha-ref-font-family-mono--font-feature-settings);
+  font-size: var(--kantha-ref-font-size-base);
+  font-style: normal;
+  font-weight: var(--kantha-ref-font-weight-regular);
+  line-height: var(--kantha-ref-line-height-large); /* 171.429% */
+  letter-spacing: var(--kantha-ref-letter-spacing-normal);
+}
+
+.text-16-medium {
+  font-family: var(--kantha-ref-font-family-sans);
+  font-size: var(--kantha-ref-font-size-large);
+  font-style: normal;
+  font-weight: var(--kantha-ref-font-weight-medium);
+  line-height: var(--kantha-ref-line-height-x-large); /* 150% */
+  letter-spacing: var(--kantha-ref-letter-spacing-tight);
+}
+
+.text-20-medium {
+  font-family: var(--kantha-ref-font-family-sans);
+  font-size: var(--kantha-ref-font-size-x-large);
+  font-style: normal;
+  font-weight: var(--kantha-ref-font-weight-medium);
+  line-height: var(--kantha-ref-line-height-x-large); /* 120% */
+  letter-spacing: var(--kantha-ref-letter-spacing-tightest);
+}
+
+.type-heading {
+  font-family: var(--kantha-font-sans);
+  font-size: var(--kantha-font-large);
+  font-weight: 600;
+  line-height: 1.33;
+  letter-spacing: normal;
+  color: var(--color-graphite-ink);
+}
+
+.type-body {
+  font-family: var(--kantha-font-sans);
+  font-size: var(--kantha-font-body);
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: normal;
+  color: var(--color-graphite-ink);
+}
+
+.type-caption-regular {
+  font-family: var(--kantha-font-sans);
+  font-size: var(--kantha-font-control);
+  font-weight: 400;
+  line-height: 1.43;
+  letter-spacing: normal;
+}
+
+.type-caption-snug {
+  font-family: var(--kantha-font-sans);
+  font-size: var(--kantha-font-control);
+  font-weight: 400;
+  line-height: 1.29;
+  letter-spacing: normal;
+}
+
+.type-caption-medium {
+  font-family: var(--kantha-font-sans);
+  font-size: var(--kantha-font-control);
+  font-weight: 500;
+  line-height: 1.43;
+  letter-spacing: normal;
+}
+
+.type-caption-semibold {
+  font-family: var(--kantha-font-sans);
+  font-size: var(--kantha-font-control);
+  font-weight: 600;
+  line-height: 1.29;
+  letter-spacing: normal;
+}
+
+.kantha-prose {
+  font-family: var(--kantha-font-sans);
+  font-size: var(--kantha-font-body);
+  line-height: 1.5;
+}
+
+/* =========================================================================
+ * Astryx Design Token Overrides — Achromatic Utility Standard
+ * ========================================================================= */
+.astryx-badge,
+[data-astryx-badge],
+[data-variant] {
+  background-color: var(--color-sidebar-mist) !important;
+  color: var(--color-graphite-ink) !important;
+  border: 1px solid var(--color-hairline) !important;
+  border-radius: var(--radius-badges, 0px) !important;
+  box-shadow: none !important;
+  font-weight: 500 !important;
+}
+
+/* Restrained Astryx inputs and buttons */
+.astryx-text-input input,
+.astryx-text-input textarea {
+  border-radius: var(--radius-buttons, 10px) !important;
+  border-color: var(--color-hairline) !important;
+  background-color: var(--color-pure-white) !important;
+  color: var(--color-graphite-ink) !important;
+  box-shadow: none !important;
+}
+
+.astryx-text-input input:focus,
+.astryx-text-input textarea:focus {
+  border-color: var(--color-graphite-ink) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* =========================================================================
+ * Code Block Highlight.js Theme — Restrained Graphite on Ink
+ * Flat, hairline elevation, zero chromatic accents
+ * ========================================================================= */
+pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 1em;
+  background-color: var(--color-graphite-ink);
+  color: #e6e6e6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+code.hljs {
+  padding: 3px 5px;
+}
+
+.hljs {
+  color: #e6e6e6;
+  background: var(--color-graphite-ink);
+}
+
+.hljs-keyword,
+.hljs-meta .hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_,
+.hljs-section {
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.hljs-type,
+.hljs-built_in {
+  color: #f0f0f0;
+  font-weight: 500;
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-variable.language_ {
+  color: #d1d5db;
+}
+
+.hljs-string,
+.hljs-meta .hljs-string,
+.hljs-regexp,
+.hljs-template-tag {
+  color: #c4c4c4;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet {
+  color: #b5b5b5;
+}
+
+.hljs-comment,
+.hljs-code,
+.hljs-formula {
+  color: #8f8f8f;
+  font-style: italic;
+}
+
+.hljs-subst,
+.hljs-operator,
+.hljs-punctuation {
+  color: #9ca3af;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}
+
+.hljs-addition {
+  background-color: #262626;
+  color: #ffffff;
+}
+
+.hljs-deletion {
+  background-color: #1a1a1a;
+  color: #8f8f8f;
+}

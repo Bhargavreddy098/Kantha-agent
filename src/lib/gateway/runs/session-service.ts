@@ -58,10 +58,10 @@ export class GatewayRunService implements IRunService {
     return record;
   }
 
-  private refreshActiveRun(record: SessionRecord, ctx: RequestContext): SessionRecord {
+  private refreshActiveRun(record: SessionRecord, ctx: RequestContext, prefetched?: RunRecord): SessionRecord {
     const id = record.session.activeRunId;
     if (!id) return record;
-    const stored = this.db.get<RunRecord>('runs', ctx.workspaceId, id);
+    const stored = prefetched ?? this.db.get<RunRecord>('runs', ctx.workspaceId, id);
     if (!stored) throw new Error('The active run is missing from gateway storage.');
 
     if (stored.run.pendingApprovalId) {
@@ -74,8 +74,8 @@ export class GatewayRunService implements IRunService {
     return record;
   }
 
-  recoverSession(record: SessionRecord, ctx: RequestContext): void {
-    const id = record.session.activeRunId;
+  recoverSession(session: GatewaySession, ctx: RequestContext): void {
+    const id = session.activeRunId;
     if (!id) return;
     const stored = this.db.get<RunRecord>('runs', ctx.workspaceId, id);
     const approval = stored?.run.pendingApprovalId
@@ -84,14 +84,24 @@ export class GatewayRunService implements IRunService {
     const now = Date.now();
     if ((stored?.leaseUntil !== undefined && stored.leaseUntil <= now) ||
       (approval && (approval.status === 'waiting' || approval.status === 'deciding') && Date.parse(approval.expiresAt) <= now)) {
-      this.db.write(() => this.refreshActiveRun(this.requireSession(record.session.id, ctx), ctx));
+      this.db.write(() => this.refreshActiveRun(this.requireSession(session.id, ctx), ctx));
     }
   }
 
-  async listSessions(ctx: RequestContext): Promise<GatewaySession[]> {
-    return this.db.write(() => this.db.list<SessionRecord>('sessions', ctx.workspaceId)
-      .filter((record) => record.session.status !== 'deleted')
-      .map((record) => this.refreshActiveRun(record, ctx).session));
+  async listSessions(ctx: RequestContext, limit?: number, offset?: number): Promise<GatewaySession[]> {
+    return this.db.write(() => {
+      const sessions = this.db.listSessionMetadata(ctx.workspaceId, limit, offset);
+      const runs = this.db.getMany<RunRecord>('runs', ctx.workspaceId,
+        sessions.flatMap(({ activeRunId }) => activeRunId ? [activeRunId] : []));
+      const now = Date.now();
+      return sessions.map((session) => {
+        if (!session.activeRunId) return session;
+        const stored = runs.get(session.activeRunId);
+        if (!stored) throw new Error('The active run is missing from gateway storage.');
+        if (!stored.run.pendingApprovalId && (stored.leaseUntil === undefined || stored.leaseUntil > now)) return session;
+        return this.refreshActiveRun(this.requireSession(session.id, ctx), ctx, stored).session;
+      });
+    });
   }
 
   async createSession(input: CreateSessionInput, ctx: RequestContext): Promise<GatewaySession> {
@@ -114,9 +124,8 @@ export class GatewayRunService implements IRunService {
   }
 
   async getSession(id: string, ctx: RequestContext): Promise<GatewaySession | null> {
-    const record = this.db.get<SessionRecord>('sessions', ctx.workspaceId, id);
-    if (!record || record.session.status === 'deleted') return null;
-    return record.session;
+    const session = this.db.getSessionMetadata(ctx.workspaceId, id);
+    return session?.status === 'deleted' ? null : session;
   }
 
   async deleteSession(id: string, ctx: RequestContext): Promise<boolean> {

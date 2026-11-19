@@ -17,13 +17,14 @@ export const PATCH = withGatewayIngress<{ id: string }>(async (req, ctx, { id })
   requireGatewayOwner(ctx);
   const validated = validateUpdateConnectionInput(await readGatewayJson(req, 8192), ctx.requestId);
   if (!validated.ok) throw new GatewayError(validated.error);
-  const { endpoint, label, apiKey, status, providerType } = validated.data;
+  const { endpoint, label, apiKey, status, providerType, eligibleModels } = validated.data;
   const connection = await getGatewayRegistry().connectionStore.updateConnection(id, {
     endpoint: endpoint !== undefined ? normalizeProviderEndpoint(endpoint) : undefined,
     label,
     apiKey,
     status,
     providerType,
+    eligibleModels,
   }, ctx);
   return NextResponse.json(publicConnection(connection));
 });

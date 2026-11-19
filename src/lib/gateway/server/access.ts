@@ -99,6 +99,24 @@ function memberForCookie(cookie: string, available: WorkspaceMember[]): Workspac
   return available.find((member) => equalHex(signature(member, [expires, nonce].join('.')), proof));
 }
 
+function isLoopback(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+}
+
+function originsMatch(actualOrigin: string, expectedOrigin: string): boolean {
+  if (actualOrigin === expectedOrigin) return true;
+  try {
+    const actual = new URL(actualOrigin);
+    const expected = new URL(expectedOrigin);
+    if (isLoopback(actual.hostname) && isLoopback(expected.hostname) && (actual.port === expected.port || (!actual.port && !expected.port))) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 export function gatewayOrigin(request: Request): URL {
   const origin = new URL(process.env.GATEWAY_ORIGIN || request.url);
   if (process.env.NODE_ENV === 'production' && origin.protocol !== 'https:' &&
@@ -110,9 +128,45 @@ export function gatewayOrigin(request: Request): URL {
 
 export function requireSameOrigin(request: Request): void {
   const expected = gatewayOrigin(request).origin;
-  if (request.headers.get('origin') !== expected) {
+  const originHeader = request.headers.get('origin');
+
+  if (originHeader) {
+    if (originsMatch(originHeader, expected)) {
+      return;
+    }
     throw createGatewayError({ code: 'forbidden', message: 'This request must come from the gateway origin.' });
   }
+
+  // Fallback for same-origin requests where the browser omits the Origin header (e.g. POST/DELETE without body)
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite === 'same-origin') {
+    return;
+  }
+
+  const referer = request.headers.get('referer');
+  if (referer) {
+    try {
+      if (originsMatch(new URL(referer).origin, expected)) {
+        return;
+      }
+    } catch {
+      // Invalid referer URL
+    }
+  }
+
+  const host = request.headers.get('host');
+  if (host) {
+    try {
+      const proto = new URL(request.url).protocol || 'http:';
+      if (originsMatch(`${proto}//${host}`, expected)) {
+        return;
+      }
+    } catch {
+      // Invalid host
+    }
+  }
+
+  throw createGatewayError({ code: 'forbidden', message: 'This request must come from the gateway origin.' });
 }
 
 export function authenticateGatewayRequest(request: NextRequest): WorkspaceMember | undefined {

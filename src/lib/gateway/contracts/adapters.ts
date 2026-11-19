@@ -3,8 +3,7 @@
  * Defines server-side service boundaries for storage, secrets, provider adapters, and run services.
  */
 
-import type { FinishReason, LanguageModelUsage, ModelMessage, streamText } from 'ai';
-import { GatewayConnection, CreateConnectionInput, UpdateConnectionInput, DiscoverModelsResult, TestConnectionResult } from './connection';
+import { GatewayConnection, CreateConnectionInput, UpdateConnectionInput, DiscoverModelsResult } from './connection';
 import { GatewayModel, ModelListQuery } from './model';
 import { AttemptReservation } from './chat';
 import { GatewaySession, CreateSessionInput } from './session';
@@ -32,25 +31,6 @@ export interface IModelCatalog {
   listModels(query: ModelListQuery, ctx: RequestContext): Promise<GatewayModel[]>;
   getModel(id: string, ctx: RequestContext, connectionId?: string): Promise<GatewayModel | null>;
   discoverModels(connectionId: string, ctx: RequestContext): Promise<DiscoverModelsResult>;
-}
-
-export interface ProviderChatInput {
-  modelId: string;
-  messages: ModelMessage[];
-  system?: string;
-  temperature?: number;
-  maxTokens: number;
-  signal: AbortSignal;
-  onDispatch(): void;
-  onText(delta: string): Promise<void>;
-  onComplete(result: { text: string; usage: LanguageModelUsage; finishReason: FinishReason }): Promise<void>;
-  onError(error: unknown): Promise<void>;
-  onAbort(): Promise<void>;
-}
-
-export interface IInferenceAdapter {
-  testConnection(connection: GatewayConnection, secret?: string): Promise<TestConnectionResult>;
-  streamChat(input: ProviderChatInput, connection: GatewayConnection, secret?: string): ReturnType<typeof streamText>;
 }
 
 export interface IRunService {

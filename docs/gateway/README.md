@@ -8,6 +8,9 @@ The primary architectural reference is the supplied `GATEWAY_REVERSE_ENGINEERING
 2. [Gateway contracts](CONTRACTS.md) defines the proposed boundaries, route groups, session state and recovery behavior.
 3. [Frontend UI/UX plan](../frontend/README.md) maps workflows, screen states and component reuse.
 4. [Running the gateway](RUNNING.md) describes configuration, deployment scope and the verification commands.
+5. [System design for implementers](SYSTEM-DESIGN.md) maps code ownership, overload behavior, and follow-on implementation slices.
+
+For the newer OpenCode V2 snapshot, see [OpenCode harness and tools](OPENCODE-HARNESS.md) and the [chat timeline source guide](../frontend/OPENCODE-CHAT-TIMELINE.md).
 
 ## What OpenCode shows
 
@@ -42,4 +45,4 @@ flowchart LR
     Events --> Client
 ```
 
-The existing Langfuse and OpenWorker intentions remain integration candidates behind the provider/telemetry and agent-runtime interfaces. Qualify the selected Langfuse inference path with protocol and per-attempt accounting fixtures. Qualify OpenWorker Harness lifecycle, durable session recovery and real pending interactions in a persistent Node deployment before enabling it. The app owns identity, authorization, credentials, hard-budget admission and durable business audit regardless of adapter. Any enabled agent runtime owns the agent loop. The first chat milestone exercises the existing chat flow without an agent loop.
+Use OpenTelemetry with SigNoz for proposed diagnostics. Qualify the actual gateway-mediated inference path with protocol and per-attempt accounting fixtures. Qualify OpenWorker Harness lifecycle, durable session recovery and real pending interactions in a persistent Node deployment before enabling it. The app owns identity, authorization, credentials, hard-budget admission and durable business audit regardless of adapter. Any enabled agent runtime owns the agent loop. The first chat milestone exercises the existing chat flow without an agent loop. [Harness operations contract](../harness/features/OPERATIONS.md)

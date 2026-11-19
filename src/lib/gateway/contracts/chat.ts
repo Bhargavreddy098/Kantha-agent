@@ -35,9 +35,6 @@ export interface GatewayChatRequest {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
-  // Transient fallback fields for backwards compatibility with pre-migration clients
-  baseUrl?: string;
-  apiKey?: string;
 }
 
 export interface AttemptReservation {

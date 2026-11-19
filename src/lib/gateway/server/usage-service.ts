@@ -101,9 +101,12 @@ export class GatewayUsageService implements IUsageService {
   }
 
   private reconcileTerminalRuns(records: AttemptRecord[], ctx: RequestContext): void {
+    const runIds = records.flatMap(({ accounting, reservation }) =>
+      !accounting && reservation.runId ? [reservation.runId] : []);
+    const runs = this.db.getMany<RunRecord>('runs', ctx.workspaceId, [...new Set(runIds)]);
     for (const record of records) {
       if (record.accounting || !record.reservation.runId) continue;
-      const stored = this.db.get<RunRecord>('runs', ctx.workspaceId, record.reservation.runId);
+      const stored = runs.get(record.reservation.runId);
       // A completed handler can still deliver final metering briefly after publishing run state.
       if (!stored?.run.completedAt || isActive(stored.run.status) ||
         Date.now() - Date.parse(stored.run.completedAt) < 30_000) continue;

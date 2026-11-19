@@ -19,7 +19,15 @@ export type GatewayEventType =
   | 'run.failed'
   | 'run.cancelled'
   | 'resync.requested'
-  | 'heartbeat';
+  | 'heartbeat'
+  // Versioned harness projection events. These carry safe run/step/verification
+  // state; raw model prompts and tool payloads stay out of the public feed.
+  | 'harness.step'
+  | 'harness.delta'
+  | 'harness.tool_proposed'
+  | 'harness.tool_result'
+  | 'harness.verification'
+  | 'harness.handoff';
 
 export interface GatewayEvent<T = unknown> {
   id: string;
@@ -73,4 +81,33 @@ export interface ResyncRequestedPayload {
   reason: string;
   expectedCursor: number;
   latestWatermark: number;
+}
+
+/** Stable identity of one harness journal entry, used for client dedupe. */
+export interface HarnessEventPayload {
+  sourceEventId: string;
+  sequence: number;
+  step: number;
+  runId: string;
+}
+
+export interface HarnessToolEventPayload extends HarnessEventPayload {
+  callId: string;
+  tool: string;
+  status?: string;
+}
+
+export interface HarnessVerificationEventPayload extends HarnessEventPayload {
+  verdict: 'completed' | 'failed';
+  candidateDigest: string;
+  failedCriteria: string[];
+}
+
+export interface HarnessHandoffEventPayload extends HarnessEventPayload {
+  outcome: {
+    status: 'completed' | 'failed' | 'cancelled' | 'interrupted';
+    reason?: string;
+    diffDigest?: string;
+    nextAction?: string;
+  };
 }

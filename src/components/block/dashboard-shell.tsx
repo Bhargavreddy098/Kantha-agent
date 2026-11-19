@@ -22,25 +22,25 @@ const RESIZE_STEP = 10;
 const DOCKED_SIDEBAR_REM = 42;
 
 export const dashboardButtonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium leading-none outline-none select-none transition-[background-color,color,box-shadow] duration-150 ease-[cubic-bezier(0.25,1,0.5,1)] focus-visible:ring-2 focus-visible:ring-(--obsidian-dashboard-shell-ring) disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] font-medium leading-none outline-none select-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#00000033] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         primary:
-          "bg-(--obsidian-dashboard-shell-accent) text-(--obsidian-dashboard-shell-accent-foreground) shadow-(--obsidian-dashboard-shell-accent-shadow) hover:bg-(--obsidian-dashboard-shell-accent-hover)",
+          "bg-[#0d0d0d] text-[#ffffff] hover:opacity-90",
         secondary:
-          "bg-(--obsidian-dashboard-shell-control) text-(--obsidian-dashboard-shell-foreground) shadow-(--obsidian-dashboard-shell-control-shadow) hover:bg-(--obsidian-dashboard-shell-muted) data-[state=open]:bg-(--obsidian-dashboard-shell-muted)",
+          "bg-[#ffffff] text-[#0d0d0d] border border-[#0000001a] hover:bg-[#0000000d] data-[state=open]:bg-[#0000000d]",
         muted:
-          "bg-(--obsidian-dashboard-shell-muted) text-(--obsidian-dashboard-shell-foreground) shadow-(--obsidian-dashboard-shell-control-shadow) hover:bg-(--obsidian-dashboard-shell-muted-hover)",
+          "bg-[#f9f9f9] text-[#0d0d0d] border border-[#0000001a] hover:bg-[#0000000d]",
         ghost:
-          "text-(--obsidian-dashboard-shell-text-subtle) hover:bg-(--obsidian-dashboard-shell-muted) hover:text-(--obsidian-dashboard-shell-foreground)",
+          "text-[#5d5d5d] hover:bg-[#0000000d] hover:text-[#0d0d0d]",
         danger:
-          "bg-(--obsidian-dashboard-shell-danger-solid) text-white shadow-[0_1px_2px_rgb(0_0_0/0.16),inset_0_1px_0_rgb(255_255_255/0.16),0_0_0_1px_rgb(0_0_0/0.08)] hover:bg-(--obsidian-dashboard-shell-danger-solid-hover)",
+          "bg-[#0d0d0d] text-[#ffffff] hover:opacity-90",
       },
       size: {
-        sm: "h-[30px] px-[9px] text-xs [&_svg]:size-3",
-        md: "h-8 px-2.5 text-sm [&_svg]:size-4",
-        icon: "size-[30px] [&_svg]:size-4",
+        sm: "h-[30px] px-2.5 text-[13px] rounded-[10px] [&_svg]:size-3",
+        md: "h-8 px-3 text-[14px] rounded-[10px] [&_svg]:size-4",
+        icon: "size-[30px] rounded-[10px] [&_svg]:size-4",
       },
     },
     defaultVariants: { variant: "secondary", size: "sm" },
@@ -529,10 +529,15 @@ export function DashboardShell({
       { duration: 0.32, ease: EASE_OUT },
     );
     // A leftover transform or filter would make the scroll area the containing block for fixed-position content.
-    controls.then(() => {
-      content.style.removeProperty("transform");
-      content.style.removeProperty("filter");
-    });
+    void (async () => {
+      try {
+        await controls;
+        content.style.removeProperty("transform");
+        content.style.removeProperty("filter");
+      } catch {
+        // Animation was stopped or interrupted.
+      }
+    })();
     return () => controls.stop();
   }, [activeTab, reduceMotion]);
 

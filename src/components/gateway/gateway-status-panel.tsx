@@ -1,39 +1,35 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { gatewayMessage, gatewayRequest, GatewayRequestError } from "@/lib/gateway/client";
+import type { GatewayHealthStatus, GatewayStatusResponse } from "@/lib/gateway/contracts/health";
 import { Badge } from "@astryxdesign/core/Badge";
-import { RefreshCw, Server } from "lucide-react";
-import { DashboardButton } from "@/components/block/dashboard-shell";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import type { ComponentHealth, GatewayStatusResponse, ReadinessResponse } from "@/lib/gateway/contracts/health";
-import { cn } from "@/lib/utils";
-import { GATEWAY_ACCESS_CHANGED, gatewayMessage, readGatewayError } from "./gateway-client";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { Heading } from "@astryxdesign/core/Heading";
+import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
+import { Stack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 
-export interface GatewayStatusPanelProps {
-  className?: string;
-  autoRefreshIntervalMs?: number;
+const componentNames = { storage: "Storage", secrets: "Secrets", activeConnections: "Connections", eventBus: "Event bus" } as const;
+const health = { healthy: "success", degraded: "warning", unhealthy: "error", initializing: "neutral" } as const;
+const readiness = { ready: "Ready", starting: "Starting", draining: "Draining", stopping: "Stopping", error: "Error" } as const;
+
+interface Observation {
+  status: GatewayHealthStatus;
+  checkedAt: string;
+  retryAfterSeconds?: number;
+  details?: GatewayStatusResponse;
 }
 
-const components = {
-  storage: "Storage",
-  secrets: "Secrets",
-  activeConnections: "Connections",
-  eventBus: "Event bus",
-} as const;
-
-const healthBadge = {
-  healthy: { label: "Healthy", variant: "success" },
-  degraded: { label: "Degraded", variant: "warning" },
-  unhealthy: { label: "Unhealthy", variant: "error" },
-  initializing: { label: "Initializing", variant: "neutral" },
-} as const satisfies Record<ComponentHealth, { label: string; variant: string }>;
-
-type StatusObservation = Pick<ReadinessResponse, "status" | "checkedAt"> & { retryAfterSeconds?: number };
-
-export function GatewayStatusPanel({ className, autoRefreshIntervalMs = 15_000 }: GatewayStatusPanelProps) {
+export function GatewayStatusPanel({ className, autoRefreshIntervalMs = 15_000 }: {
+  className?: string;
+  autoRefreshIntervalMs?: number;
+}) {
   const [loading, setLoading] = useState(true);
-  const [observation, setObservation] = useState<StatusObservation>();
-  const [details, setDetails] = useState<GatewayStatusResponse>();
+  const [observation, setObservation] = useState<Observation>();
   const [error, setError] = useState<string>();
   const request = useRef<AbortController | null>(null);
 
@@ -43,27 +39,27 @@ export function GatewayStatusPanel({ className, autoRefreshIntervalMs = 15_000 }
     request.current = controller;
     setLoading(true);
     try {
-      const res = await fetch("/api/gateway/status", { cache: "no-store", signal: controller.signal });
-      if (res.ok) {
-        const current: GatewayStatusResponse = await res.json();
-        if (controller.signal.aborted) return;
-        setObservation(current);
-        setDetails(current);
-      } else if (res.status === 503) {
-        const ready = await fetch("/api/gateway/health/ready", { cache: "no-store", signal: controller.signal });
-        if (!ready.ok && ready.status !== 503) throw await readGatewayError(ready);
-        const data: StatusObservation = await ready.json();
-        const hint = Number(ready.headers.get("Retry-After") ?? res.headers.get("Retry-After"));
-        if (controller.signal.aborted) return;
-        setObservation({ ...data, retryAfterSeconds: data.retryAfterSeconds ?? (hint > 0 ? hint : undefined) });
-        setDetails(undefined);
-      } else {
-        if (res.status === 401) window.dispatchEvent(new Event(GATEWAY_ACCESS_CHANGED));
-        throw await readGatewayError(res);
+      let next: Observation;
+      try {
+        const details = await gatewayRequest<GatewayStatusResponse>("/api/gateway/status", { signal: controller.signal });
+        next = { status: details.status, checkedAt: details.checkedAt, details };
+      } catch (cause) {
+        if (!(cause instanceof GatewayRequestError) || cause.status !== 503) throw cause;
+        const probe = await fetch("/api/gateway/health/ready", { cache: "no-store", signal: controller.signal });
+        if (!probe.ok && probe.status !== 503) throw cause;
+        const result = await probe.json() as { status: GatewayHealthStatus };
+        const retry = Number(probe.headers.get("retry-after"));
+        next = {
+          status: result.status, checkedAt: new Date().toISOString(),
+          retryAfterSeconds: Number.isFinite(retry) && retry > 0 ? retry : undefined,
+        };
       }
-      setError(undefined);
-    } catch (error) {
-      if (!controller.signal.aborted) setError(gatewayMessage(error, "The gateway status could not be reached."));
+      if (!controller.signal.aborted) {
+        setObservation(next);
+        setError(undefined);
+      }
+    } catch (cause) {
+      if (!controller.signal.aborted) setError(gatewayMessage(cause, "Gateway diagnostics are unavailable."));
     } finally {
       if (request.current === controller) request.current = null;
       if (!controller.signal.aborted) setLoading(false);
@@ -79,60 +75,41 @@ export function GatewayStatusPanel({ className, autoRefreshIntervalMs = 15_000 }
     };
   }, [refresh]);
 
-  const retryDelay = observation?.retryAfterSeconds ? Math.max(observation.retryAfterSeconds * 1000, 1000) : autoRefreshIntervalMs;
+  const interval = observation?.retryAfterSeconds ? observation.retryAfterSeconds * 1000 : autoRefreshIntervalMs;
   useEffect(() => {
-    if (retryDelay <= 0) return;
-    const timer = setInterval(refresh, retryDelay);
+    if (interval <= 0) return;
+    const timer = setInterval(refresh, interval);
     return () => clearInterval(timer);
-  }, [refresh, retryDelay]);
+  }, [interval, refresh]);
 
-  const label = error
-    ? details ? "Stale" : "Unavailable"
-    : observation?.status === "ready" ? "Ready"
-      : observation ? observation.status.charAt(0).toUpperCase() + observation.status.slice(1)
-        : "Checking…";
-  const variant = error ? (details ? "warning" : "error") : observation?.status === "ready" ? "success" : "neutral";
+  const details = observation?.details;
+  const label = error ? (observation ? "Stale" : "Unavailable") : observation ? readiness[observation.status] : "Checking…";
+  const variant = error ? (observation ? "warning" : "error") : observation?.status === "ready" ? "success" : "neutral";
 
   return (
-    <Card className={cn("overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xs", className)}>
-      <CardHeader className="gap-3 border-b border-neutral-100 p-5 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-            <Server className="size-4" /> Gateway readiness
-            <span role="status"><Badge variant={variant} label={label} /></span>
-          </CardTitle>
-          {observation && <CardDescription className="mt-2 text-xs">Last checked {new Date(observation.checkedAt).toLocaleString()}</CardDescription>}
-        </div>
-        <DashboardButton variant="secondary" size="sm" disabled={loading} onClick={() => void refresh()}>
-          <RefreshCw className={cn("mr-1 size-3.5", loading && "motion-safe:animate-spin")} />
-          {loading ? "Checking…" : "Retry"}
-        </DashboardButton>
-      </CardHeader>
-      <CardContent className="space-y-4 p-5">
-        {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700">{error}</p>}
-        {!error && observation?.retryAfterSeconds && (
-          <p className="text-xs text-neutral-600">The gateway requested another check in {observation.retryAfterSeconds} seconds.</p>
-        )}
+    <Card className={className} padding={4}>
+      <VStack gap={3}>
+        <Stack direction="horizontal" align="center" justify="between" wrap="wrap" gap={2}>
+          <Heading level={2}>Gateway readiness</Heading>
+          <Button label="Refresh gateway status" size="sm" variant="secondary" isLoading={loading} onClick={refresh} />
+        </Stack>
+        <Text role="status"><Badge label={label} variant={variant} /></Text>
+        {observation && <Text as="p">Last checked {new Date(observation.checkedAt).toLocaleString()}</Text>}
+        {error && <Banner status="error" role="alert" title={error} />}
+        {observation?.retryAfterSeconds && <Text as="p">Retrying in {observation.retryAfterSeconds} seconds.</Text>}
         {details && (
-          <>
-            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {Object.entries(components).map(([component, label]) => {
-                const health = details.components[component as keyof typeof components];
-                return (
-                  <div key={component} className="space-y-2 rounded-lg border border-neutral-200 p-3">
-                    <dt className="text-xs font-semibold text-neutral-700">{label}</dt>
-                    <dd><Badge {...healthBadge[health]} /></dd>
-                  </div>
-                );
-              })}
-            </dl>
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-600">
-              <span>{details.metrics.activeSessions} active sessions · {details.metrics.activeRuns} active runs</span>
-              <span className="break-all font-mono">Request {details.requestId}</span>
-            </div>
-          </>
+          <MetadataList>
+            {(Object.keys(componentNames) as (keyof typeof componentNames)[]).map((key) => (
+              <MetadataListItem key={key} label={componentNames[key]}>
+                <Badge variant={health[details.components[key]]} label={details.components[key]} />
+              </MetadataListItem>
+            ))}
+            <MetadataListItem label="Active sessions">{details.metrics.activeSessions}</MetadataListItem>
+            <MetadataListItem label="Active runs">{details.metrics.activeRuns}</MetadataListItem>
+            <MetadataListItem label="Request ID">{details.requestId}</MetadataListItem>
+          </MetadataList>
         )}
-      </CardContent>
+      </VStack>
     </Card>
   );
 }

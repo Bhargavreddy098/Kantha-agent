@@ -23,8 +23,14 @@ function endpointError() {
 }
 
 function isAllowedPrivateOrigin(url: URL): boolean {
-  return (process.env.GATEWAY_PRIVATE_ORIGINS ?? '').split(',')
-    .some((origin) => origin.trim() === url.origin);
+  const configured = (process.env.GATEWAY_PRIVATE_ORIGINS ?? '').split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (configured.some((origin) => origin === url.origin)) {
+    return true;
+  }
+  const hostname = url.hostname.replace(/\.$/, '').toLowerCase();
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
 }
 
 function checkUrl(url: URL) {
@@ -59,7 +65,8 @@ export function normalizeProviderEndpoint(endpoint: string): string {
 }
 
 async function resolveAddress(url: URL, signal: AbortSignal): Promise<string> {
-  const hostname = url.hostname.replace(/\.$/, '');
+  const hostname = url.hostname.replace(/\.$/, '').toLowerCase();
+  if (hostname === 'localhost') return '127.0.0.1';
   if (isIP(hostname) === 4) return hostname;
   const addresses = await lookup(hostname, { family: 4, all: true });
   signal.throwIfAborted();
@@ -69,7 +76,7 @@ async function resolveAddress(url: URL, signal: AbortSignal): Promise<string> {
   return addresses[0].address;
 }
 
-export const providerFetch: typeof fetch = async (input, init) => {
+async function sendProviderRequest(input: Parameters<typeof fetch>[0], init?: RequestInit, onDispatch?: () => void): Promise<Response> {
   const outbound = new Request(input, init);
   const url = new URL(outbound.url);
   checkUrl(url);
@@ -134,11 +141,12 @@ export const providerFetch: typeof fetch = async (input, init) => {
       resolve(new Response(body, { status, headers: responseHeaders }));
     });
     request.once('error', reject);
+    onDispatch?.();
     request.end(body);
   });
-};
+}
 
-export function makeProviderFetch(endpoint: string): typeof fetch {
+export function makeProviderFetch(endpoint: string, onDispatch?: () => void): typeof fetch {
   const base = new URL(normalizeProviderEndpoint(endpoint));
   const prefix = base.pathname.replace(/\/+$/, '');
   return (input, init) => {
@@ -147,6 +155,6 @@ export function makeProviderFetch(endpoint: string): typeof fetch {
         (url.pathname !== prefix && !url.pathname.startsWith(prefix + '/'))) {
       throw endpointError();
     }
-    return providerFetch(input, init);
+    return sendProviderRequest(input, init, onDispatch);
   };
 }

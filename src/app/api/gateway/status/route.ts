@@ -14,5 +14,9 @@ export const GET = withGatewayIngress(async (_req: NextRequest, ctx: RequestCont
     activeRuns,
   });
 
+  status.metrics.capacity = {
+    inference: registry.inferenceCapacity.snapshot(ctx.workspaceId),
+    events: registry.eventCapacity.snapshot(ctx.workspaceId),
+  };
   return NextResponse.json(status);
 });

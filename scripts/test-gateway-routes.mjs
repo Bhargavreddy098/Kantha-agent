@@ -142,6 +142,10 @@ test('gateway HTTP workflow, tenant boundaries, cancellation and restart', { tim
     GATEWAY_ORIGIN: gatewayOrigin,
     GATEWAY_PRIVATE_ORIGINS: providerOrigin,
     GATEWAY_MAX_DAILY_TOKENS: '4000',
+    GATEWAY_MAX_ACTIVE_INFERENCE: '1',
+    GATEWAY_MAX_WORKSPACE_INFERENCE: '1',
+    GATEWAY_MAX_ACTIVE_EVENT_STREAMS: '1',
+    GATEWAY_MAX_WORKSPACE_EVENT_STREAMS: '1',
     GATEWAY_MAX_DAILY_BUDGET_USD: '1',
     GATEWAY_MODEL_PRICES: JSON.stringify({ 'custom:fixture-model': { inputPerMillion: 2, outputPerMillion: 4 } }),
     GATEWAY_MEMBERS: JSON.stringify([
@@ -187,7 +191,7 @@ test('gateway HTTP workflow, tenant boundaries, cancellation and restart', { tim
   await invoke(connections, { method: 'POST', body: create, headers: { origin: 'http://unrelated.invalid' }, status: 403 });
   await invoke(connections, { token: memberKey, browser: false, status: 403 });
   await invoke(connections, {
-    method: 'POST', body: { ...create, endpoint: 'http://localhost:1/v1' }, status: 400,
+    method: 'POST', body: { ...create, endpoint: 'http://192.168.1.1:1/v1' }, status: 400,
   });
 
   const connection = await json(connections, { method: 'POST', body: create, status: 201 });
@@ -214,6 +218,20 @@ test('gateway HTTP workflow, tenant boundaries, cancellation and restart', { tim
   assert.equal(redirectedUpstream, false);
 
   const session = await json('/api/gateway/sessions', { method: 'POST', body: { title: 'E2E conversation' }, status: 201 });
+  const sessionsPath = '/api/gateway/sessions';
+  const second = await json(sessionsPath, { method: 'POST', body: { title: 'Second conversation' }, status: 201 });
+  const page = await json(sessionsPath + '?limit=1');
+  assert.equal(page.sessions.length, 1);
+  assert.equal(page.nextOffset, 1);
+  const lastPage = await json(sessionsPath + '?limit=1&offset=' + page.nextOffset);
+  assert.equal(lastPage.nextOffset, null);
+  assert.deepEqual(new Set([page.sessions[0].id, lastPage.sessions[0].id]), new Set([session.id, second.id]));
+  assert.equal((await json(sessionsPath)).total, 2);
+  await invoke(sessionsPath + '?limit=101', { status: 400 });
+  assert.deepEqual((await json(sessionsPath + '?limit=1', { token: otherKey, browser: false })).sessions, []);
+  const status = await request('/api/gateway/status');
+  assert.match(status.headers.get('cache-control') ?? '', /no-store/);
+  await status.body?.cancel();
   const sessionPath = '/api/gateway/sessions/' + session.id;
   assert.equal((await json(sessionPath)).run, null);
   await invoke(sessionPath, { token: otherKey, browser: false, status: 404 });
@@ -242,20 +260,44 @@ test('gateway HTTP workflow, tenant boundaries, cancellation and restart', { tim
 
   const eventPath = '/api/gateway/events?sessionId=' + session.id;
   assert.match(await (await request(eventPath)).text(), /resync\.requested/);
+  const otherAuth = { token: otherKey, browser: false };
+  const otherSession = await json(sessionsPath, { ...otherAuth, method: 'POST', body: {}, status: 201 });
+  const otherEventPath = '/api/gateway/events?sessionId=' + otherSession.id + '&cursor=0';
   const eventStream = await request(eventPath + '&cursor=0');
+  const eventOverload = await request(eventPath + '&cursor=0', { status: 429 });
+  assert.equal(eventOverload.headers.get('retry-after'), '2');
+  assert.equal((await eventOverload.json()).code, 'subscriber_overflow');
+  assert.equal((await json(otherEventPath, { ...otherAuth, status: 503 })).code, 'service_unavailable');
+  assert.equal((await json('/api/gateway/status')).metrics.capacity.events.active, 1);
+  assert.equal((await json('/api/gateway/status', otherAuth)).metrics.capacity.events.active, 0);
   const reader = eventStream.body.getReader();
   const decoder = new TextDecoder();
-  let replayedEvents = '';
+  let replayBuffer = '';
+  let completedEvent;
   try {
-    while (!replayedEvents.includes('run.completed')) {
+    while (!completedEvent) {
       const { value, done } = await reader.read();
       assert(!done);
-      replayedEvents += decoder.decode(value, { stream: true });
+      replayBuffer += decoder.decode(value, { stream: true });
+      const frames = replayBuffer.split('\n\n');
+      replayBuffer = frames.pop();
+      for (const frame of frames) {
+        const data = frame.split('\n').find((line) => line.startsWith('data: '));
+        if (!data) continue;
+        const event = JSON.parse(data.slice(6));
+        if (event.type === 'run.state_changed' && event.runId === runId && event.data?.newState === 'completed') {
+          completedEvent = event;
+          break;
+        }
+      }
     }
   } finally {
     await reader.cancel();
   }
-  assert(replayedEvents.includes(runId));
+  assert.equal(completedEvent.sessionId, session.id);
+  await eventually(async () => (await json('/api/gateway/status')).metrics.capacity.events.active === 0);
+  const recoveredFeed = await request(otherEventPath, otherAuth);
+  await recoveredFeed.body.cancel();
 
   const pending = await json('/api/gateway/approvals', { method: 'POST', body: { sessionId: session.id }, status: 201 });
   const approvalPath = '/api/gateway/approvals/' + pending.id;
@@ -273,19 +315,42 @@ test('gateway HTTP workflow, tenant boundaries, cancellation and restart', { tim
   assert.equal((await json(approvalPath, { method: 'POST', body: decision })).status, 'approved');
   assert((await json(sessionPath)).messages.some((message) => message.content === 'Fixture reply'));
 
-  const running = await request('/api/chat', {
-    method: 'POST',
-    body: {
-      ...chatBody, submissionKey: 'fixture-turn-two',
-      messages: [{ id: 'slow-message', role: 'user', parts: [{ type: 'text', text: 'wait for cancellation' }] }],
-    },
-  });
+  const slowBody = {
+    ...chatBody, submissionKey: 'fixture-turn-two',
+    messages: [{ id: 'slow-message', role: 'user', parts: [{ type: 'text', text: 'wait for cancellation' }] }],
+  };
+  const running = await request('/api/chat', { method: 'POST', body: slowBody });
   const runningId = running.headers.get('x-kantha-run-id');
   await eventually(() => requests.length === 2);
+  assert.equal((await json('/api/gateway/status')).metrics.capacity.inference.active, 1);
+
+  const liveReplay = await request('/api/chat', { method: 'POST', body: slowBody });
+  assert.equal(liveReplay.headers.get('x-kantha-run-id'), runningId);
+  await liveReplay.body.cancel();
+
+  const totalBefore = (await json(sessionsPath)).total;
+  const overload = await request('/api/chat', {
+    method: 'POST', status: 429,
+    body: { ...slowBody, sessionId: undefined, submissionKey: 'workspace-overload' },
+  });
+  assert.equal(overload.headers.get('retry-after'), '2');
+  assert.equal((await overload.json()).code, 'rate_limited');
+  assert.equal((await json(sessionsPath)).total, totalBefore);
+
+  const otherConnection = await json(connections, {
+    ...otherAuth, method: 'POST', status: 201,
+    body: { ...create, eligibleModels: ['fixture-model'] },
+  });
+  assert.equal((await json('/api/chat', {
+    ...otherAuth, method: 'POST', status: 503,
+    body: { ...slowBody, sessionId: otherSession.id, connectionId: otherConnection.id },
+  })).code, 'service_unavailable');
+  assert.equal(requests.length, 2);
   const cancelled = await json('/api/gateway/runs/' + runningId + '/cancel', { method: 'POST', body: {} });
   assert.equal(cancelled.status, 'cancelled');
   await running.body?.cancel();
   await eventually(() => cancelledUpstream);
+  await eventually(async () => (await json('/api/gateway/status')).metrics.capacity.inference.active === 0);
   assert.equal((await json(sessionPath)).run.status, 'cancelled');
 
   const usage = await json('/api/gateway/usage');
@@ -293,9 +358,37 @@ test('gateway HTTP workflow, tenant boundaries, cancellation and restart', { tim
   assert(usage.totals.totalTokens >= 13);
   await invoke('/api/chat', {
     method: 'POST',
-    body: { ...chatBody, maxTokens: 4096, submissionKey: 'fixture-budget-denial' }, status: 402,
+    body: {
+      ...chatBody,
+      maxTokens: 4096,
+      submissionKey: 'fixture-budget-denial',
+      messages: [{ id: 'budget-message', role: 'user', parts: [{ type: 'text', text: 'Check budget admission' }] }],
+    },
+    status: 402,
   });
   assert.equal(requests.length, 2);
+  assert.equal((await json('/api/gateway/status')).metrics.capacity.inference.active, 0);
+
+  const runsPath = sessionsPath + '/' + second.id + '/runs';
+  const runInput = {
+    connectionId: connection.id, modelId: 'fixture-model', submissionKey: 'fixture-journal-only', maxTokens: 256,
+    inputMessages: [{ id: 'journal-user-text', role: 'user', content: 'Run through the session endpoint' }],
+  };
+  const submitted = await json(runsPath, { method: 'POST', body: runInput, status: 201 });
+  assert.equal(submitted.sessionId, second.id);
+  const completed = await eventually(async () => {
+    const current = await json(sessionsPath + '/' + second.id);
+    return current.run?.status === 'completed' && current;
+  });
+  assert.equal(completed.run.id, submitted.id);
+  assert(completed.messages.some((message) => message.content === 'Fixture reply'));
+  assert.equal(requests.length, 3);
+  assert.equal(requests[2].messages.at(-1).content, 'Run through the session endpoint');
+  const submittedReplay = await json(runsPath, { method: 'POST', body: runInput, status: 200 });
+  assert.equal(submittedReplay.id, submitted.id);
+  await invoke(runsPath, { method: 'POST', body: { ...runInput, maxTokens: 128 }, status: 409 });
+  assert.equal(requests.length, 3);
+  assert.equal((await json('/api/gateway/status')).metrics.capacity.inference.active, 0);
 
   await invoke(path, { method: 'DELETE', status: 204 });
   assert.deepEqual((await json('/api/models')).models, []);

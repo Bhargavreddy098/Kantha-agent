@@ -5,23 +5,23 @@ import type { GatewayEvent } from '../contracts/event';
 import type { RequestContext } from '../contracts/context';
 import { GatewayError } from '../contracts/errors';
 import type { GatewayDatabase } from '../server/storage/database';
-import type { SessionRecord } from './state';
+import type { GatewaySession } from '../contracts/session';
 
 export class GatewayEventFeedService implements IEventFeedService {
   constructor(
     private readonly db: GatewayDatabase,
-    private readonly recoverSession: (session: SessionRecord, ctx: RequestContext) => void,
+    private readonly recoverSession: (session: GatewaySession, ctx: RequestContext) => void,
   ) {}
 
   async *subscribe(sessionId: string, cursor: number, ctx: RequestContext, signal?: AbortSignal): AsyncIterable<GatewayEvent> {
-    const initial = this.db.get<SessionRecord>('sessions', ctx.workspaceId, sessionId);
-    if (!initial || initial.session.status === 'deleted') {
+    const initial = this.db.getSessionMetadata(ctx.workspaceId, sessionId);
+    if (!initial || initial.status === 'deleted') {
       throw new GatewayError({ code: 'not_found', message: 'Session not found', requestId: ctx.requestId, resource: sessionId });
     }
     let lastRecoveryCheck = 0;
     while (!signal?.aborted) {
-      const session = this.db.get<SessionRecord>('sessions', ctx.workspaceId, sessionId);
-      if (!session || session.session.status === 'deleted') return;
+      const session = this.db.getSessionMetadata(ctx.workspaceId, sessionId);
+      if (!session || session.status === 'deleted') return;
       if (Date.now() - lastRecoveryCheck >= 1_000) {
         this.recoverSession(session, ctx);
         lastRecoveryCheck = Date.now();

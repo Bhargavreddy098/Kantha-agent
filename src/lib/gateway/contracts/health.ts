@@ -30,6 +30,12 @@ export interface ReadinessResponse {
   };
 }
 
+export interface CapacitySnapshot {
+  active: number;
+  workspaceLimit: number;
+  processLimit: number;
+}
+
 export interface GatewayStatusResponse {
   status: GatewayHealthStatus;
   ready: boolean;
@@ -48,6 +54,7 @@ export interface GatewayStatusResponse {
     activeSessions: number;
     activeRuns: number;
     memoryMb: number;
+    capacity?: { inference: CapacitySnapshot; events: CapacitySnapshot };
   };
   diagnostics?: Record<string, unknown>;
 }

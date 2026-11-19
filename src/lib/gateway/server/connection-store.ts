@@ -10,7 +10,7 @@ export class GatewayConnectionStore implements IConnectionStore {
   constructor(private readonly db: GatewayDatabase, private readonly secrets: GatewaySecretStore) {}
 
   async listConnections(ctx: RequestContext): Promise<GatewayConnection[]> {
-    return this.db.list('connections', ctx.workspaceId);
+    return this.db.listConnections(ctx.workspaceId);
   }
 
   async getConnection(id: string, ctx: RequestContext): Promise<GatewayConnection | null> {
@@ -71,7 +71,7 @@ export class GatewayConnectionStore implements IConnectionStore {
         endpoint: input.endpoint ?? existing.endpoint,
         providerType: input.providerType ?? existing.providerType,
         status: input.status ?? existing.status,
-        eligibleModels: revoked || endpointChanged || credentialsChanged ? [] : (input.eligibleModels ?? existing.eligibleModels),
+        eligibleModels: input.eligibleModels ?? (revoked || endpointChanged ? [] : existing.eligibleModels),
         lastTestedAt: endpointChanged || credentialsChanged ? undefined : existing.lastTestedAt,
         lastError: endpointChanged || credentialsChanged ? undefined : existing.lastError,
         secretRef,

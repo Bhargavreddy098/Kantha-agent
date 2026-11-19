@@ -1,0 +1,30 @@
+# Harness persistence and transcript portability
+
+Proposed storage contract. The current gateway and H0–H1 fixture composition use SQLite. Read the [implementation handoff](../HANDOFF-H0-H1.md) for evidence and the [session contract](SESSIONS.md) for runtime ownership. H1 exercises the persistence boundaries. Qualify any shared deployment under A2, A5, A6 and A8 before routing live traffic to it.
+
+## Storage decision
+
+Use **Neon managed PostgreSQL** for the shared deployment in place of Supabase. Kantha already owns authentication and application authorization, so the immediate requirement is a managed relational database with transactional constraints, pooled connections and a restore path. Use server-side roles, explicit scope checks and a direct connection for migrations that require session state. Keep pooled authorization and locking assumptions transaction-scoped. Choose the region, restore window and compute settings at qualification. Measure wake latency and keep compute available if readiness and tail-latency targets require it. [Neon connection pooling](https://neon.com/docs/connect/connection-pooling) · [Neon point-in-time restore](https://neon.com/docs/introduction/point-in-time-restore)
+
+Use the Claude Code-inspired append-only session history pattern with a Kantha-owned versioned format. In shared deployments the harness journal is stored as ordered PostgreSQL events plus checkpoints and exported as JSONL. This gives recovery one transactional source and makes transcripts portable. Keep SQLite for the existing single-process profile and local fixture runs. A disposable executor may hold a working copy, and durable workspace snapshots or Git checkpoints belong to the workspace owner. See [Claude Code's session guidance](https://code.claude.com/docs/en/how-claude-code-works).
+
+| Record | Owner and durability |
+| --- | --- |
+| Identity, grants, credentials, submission mapping, approvals, action intent, usage and business audit | Gateway-owned transactional state. Public mappings commit before runtime delivery. Credential material uses the existing encryption boundary. |
+| Conversation, execution journal and checkpoints | Harness-owned, append-only canonical events and a persisted checkpoint. PostgreSQL for the shared Kantha storage profile. An external runtime must qualify its authoritative journal and integration before selection. |
+| Chat snapshots, SSE and transcript exports | Derived views of committed state. Persist a publication cursor or transactional outbox where crossing stores. Consume by stable source identity and rebuild safely after interruption. |
+| Large evidence and immutable archives | Authorized artifact references backed by private S3-compatible object storage in the shared deployment. Record checksum, scope and retention. Publish a reference only after the object is durable and validated. Keep referenced object versions recoverable for the supported database restore window, subject to the deletion policy. Sweep orphaned uploads according to retention policy. |
+
+## Journal and recovery contract
+
+- Order by session sequence under a storage-enforced writer generation. Use unique session sequence and event IDs. A retry with identical identity and payload reuses the record. Conflicting payloads and stale generations fail. Reserve a stable event identity before crossing an adapter when redelivery is possible.
+- Commit the relevant journal events and checkpoint in one transaction. A checkpoint pins input, phase, workspace identity, model/tool assets, compaction watermark, pending approval/action and verifier state. Release the transaction before external calls. At dispatch, recheck the fence and current grants and use the durable action intent. Reconcile a lost acknowledgement by reading committed identities and executor receipts before retrying.
+- Export authorized committed events through a fixed high-water mark in sequence order. Each UTF-8 JSONL record carries `schemaVersion`, `eventId`, `sessionId`, `runId`, `sequence`, `occurredAt`, `type`, a typed `payload` and optional step or parent references. Validate payloads per type and preserve original event identities. Large outputs use references. Keep the format independent of Claude Code internals.
+- Write finalized local exports via a temporary file and atomic publication. A reader can report a trailing partial line in an interrupted local export and recover only its complete prefix for inspection. A finalized archive with invalid records or checksum mismatch must fail validation. A JSONL export cannot authorize a resume. Resume uses the canonical journal, current grants and a verified workspace checkpoint.
+- Enforce workspace-scoped reads and exports, retention, deletion and restore behavior for events, artifacts and backups. Keep ordinary chat's transcript subject to its existing application contract. Treat authorized transcript content as sensitive and exclude it from default telemetry.
+
+## Qualification and migration
+
+1. Replay the scripted SQLite scenarios against the PostgreSQL adapter with production-like roles and pooling. Race submissions and competing writers. Inject disconnects before and after commit, then prove no duplicate results, ledger settlements or resumed effects. Exercise unauthorized reads and tampered or truncated exports.
+2. Restore the shared database and representative artifacts in staging. Verify cross-scope access denial, checkpoint recovery and reconciliation of pending actions and attempts. Measure and record recovery time, recoverable data window, readiness and connection saturation against the deployment targets.
+3. Before moving any live SQLite deployment, quiesce writes and reconcile active work. Verify a consistent backup and tested import with scoped counts, identifiers, checksums for exports and ledger totals. Keep one authoritative writer during cutover. Roll back before admitting writes to the target, or use a tested reverse migration or forward recovery after target writes begin.

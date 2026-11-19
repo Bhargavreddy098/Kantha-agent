@@ -17,6 +17,7 @@ export type GatewayErrorCode =
   | 'upstream_timeout'
   | 'budget_exceeded'
   | 'subscriber_overflow'
+  | 'harness_failed'
   | 'internal_error';
 
 export interface GatewayErrorEnvelope {
@@ -43,6 +44,7 @@ export const GATEWAY_HTTP_STATUS_MAP: Record<GatewayErrorCode, number> = {
   upstream_timeout: 504,
   budget_exceeded: 402,
   subscriber_overflow: 429,
+  harness_failed: 422,
   internal_error: 500,
 };
 

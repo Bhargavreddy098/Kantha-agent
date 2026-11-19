@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@astryxdesign/core/Badge";
 import { DashboardButton } from "@/components/block/dashboard-shell";
-import { gatewayMessage } from "./gateway-client";
+import { gatewayMessage } from "@/lib/gateway/client";
 import {
   ShieldAlert,
   Check,

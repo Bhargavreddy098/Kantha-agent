@@ -16,12 +16,13 @@ export const POST = withGatewayIngress(async (req, ctx) => {
   requireGatewayOwner(ctx);
   const validated = validateCreateConnectionInput(await readGatewayJson(req, 8192), ctx.requestId);
   if (!validated.ok) throw new GatewayError(validated.error);
-  const { label, providerType, apiKey, endpoint } = validated.data;
+  const { label, providerType, apiKey, endpoint, eligibleModels } = validated.data;
   const connection = await getGatewayRegistry().connectionStore.createConnection({
     label,
     providerType,
     apiKey,
     endpoint: normalizeProviderEndpoint(endpoint),
+    eligibleModels,
   }, ctx);
   return NextResponse.json(publicConnection(connection), { status: 201 });
 });

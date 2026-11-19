@@ -12,6 +12,10 @@ function validRate(value: unknown): value is number {
     value >= 0 && value <= Number.MAX_SAFE_INTEGER;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 export function gatewayModelPrice(
   connection: GatewayConnection,
   modelId: string,
@@ -32,12 +36,12 @@ export function gatewayModelPrice(
   } catch {
     throw invalidPrices();
   }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw invalidPrices();
+  if (!isRecord(raw)) throw invalidPrices();
 
   const prices = new Map<string, TokenPrice>();
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalidPrices();
-    const { inputPerMillion, outputPerMillion } = value as Record<string, unknown>;
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isRecord(value)) throw invalidPrices();
+    const { inputPerMillion, outputPerMillion } = value;
     const separator = key.indexOf(':');
     if (separator < 1 || separator === key.length - 1 || !validRate(inputPerMillion) || !validRate(outputPerMillion)) {
       throw invalidPrices();

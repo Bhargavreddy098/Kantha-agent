@@ -2,10 +2,15 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+const reactHooksPlugin = nextVitals[0]?.plugins?.["react-hooks"];
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    plugins: {
+      "react-hooks": reactHooksPlugin,
+    },
     rules: {
       "react-hooks/set-state-in-effect": "warn",
     },
@@ -21,6 +26,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "src/ui/**",
   ]),
 ]);
 

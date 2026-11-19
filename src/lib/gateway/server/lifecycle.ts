@@ -2,7 +2,6 @@ import type { GatewayHealthStatus, ComponentHealth, LivenessResponse, ReadinessR
 import type { RequestContext } from '../contracts/context';
 import { createGatewayError } from '../contracts/errors';
 import { checkGatewayAccessConfiguration } from './access';
-import { getGatewayRegistry } from './registry';
 
 export class GatewayLifecycleManager {
   private status: GatewayHealthStatus = 'starting';
@@ -15,6 +14,8 @@ export class GatewayLifecycleManager {
     eventBus: 'initializing' as ComponentHealth,
   };
 
+  constructor(private readonly checkStorage: () => boolean) {}
+
   public setStatus(status: GatewayHealthStatus, retryAfter?: number): void {
     this.status = status;
     if (retryAfter !== undefined) this.retryAfterSeconds = retryAfter;
@@ -23,7 +24,7 @@ export class GatewayLifecycleManager {
   public refresh(): void {
     if (this.status === 'draining' || this.status === 'stopping') return;
     try {
-      if (!getGatewayRegistry().checkStorage()) throw new Error('Gateway store not available');
+      if (!this.checkStorage()) throw new Error('Gateway store not available');
       this.components.storage = 'healthy';
       this.components.secrets = 'healthy';
       this.components.activeConnections = 'healthy';
@@ -68,17 +69,15 @@ export class GatewayLifecycleManager {
       },
     };
   }
-}
 
-export const gatewayLifecycle = new GatewayLifecycleManager();
-
-export function ensureGatewayReady() {
-  gatewayLifecycle.refresh();
-  const state = gatewayLifecycle.getReadiness();
-  if (state.ready) return;
-  throw createGatewayError({
-    code: state.status === 'draining' || state.status === 'stopping' ? 'service_stopping' : 'service_unavailable',
-    message: 'The gateway is temporarily unavailable.',
-    retryAfterSeconds: state.retryAfterSeconds,
-  });
+  public ensureReady(): void {
+    this.refresh();
+    const state = this.getReadiness();
+    if (state.ready) return;
+    throw createGatewayError({
+      code: state.status === 'draining' || state.status === 'stopping' ? 'service_stopping' : 'service_unavailable',
+      message: 'The gateway is temporarily unavailable.',
+      retryAfterSeconds: state.retryAfterSeconds,
+    });
+  }
 }

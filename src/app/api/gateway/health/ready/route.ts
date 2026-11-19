@@ -1,5 +1,5 @@
 import { connection, NextResponse } from 'next/server';
-import { gatewayLifecycle } from '@/lib/gateway/server/lifecycle';
+import { gatewayLifecycle } from '@/lib/gateway/server/registry';
 
 export async function GET() {
   // Readiness is sampled from the running instance, including storage and access configuration.

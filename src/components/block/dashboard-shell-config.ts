@@ -1,5 +1,4 @@
 import {
-  FolderKanban,
   Settings,
   MessageSquare,
 } from "lucide-react";
@@ -12,9 +11,6 @@ export const navigation = [
     id: "main",
     title: "Main",
     items: [
-      // Hash links keep the workspace views on the root route, so they work
-      // from every page in the app.
-      { id: "projects", label: "Projects", icon: FolderKanban, href: "/#projects" },
       { id: "chat", label: "Chat", icon: MessageSquare, href: "/chat" },
     ],
   },

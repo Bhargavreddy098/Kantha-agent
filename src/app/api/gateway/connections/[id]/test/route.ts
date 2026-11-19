@@ -1,3 +1,4 @@
+import { testConnection } from '@/lib/gateway/providers/connection-test';
 import { NextResponse } from 'next/server';
 import { requireGatewayOwner, withGatewayIngress } from '@/lib/gateway/server/ingress';
 import { getGatewayRegistry } from '@/lib/gateway/server/registry';
@@ -5,7 +6,7 @@ import { createGatewayError } from '@/lib/gateway/contracts/errors';
 
 export const POST = withGatewayIngress<{ id: string }>(async (_req, ctx, { id }) => {
   requireGatewayOwner(ctx);
-  const { connectionStore, secretStore, inferenceAdapter } = getGatewayRegistry();
+  const { connectionStore, secretStore } = getGatewayRegistry();
   const connection = await connectionStore.getConnection(id, ctx);
   if (!connection || connection.status === 'revoked') {
     throw createGatewayError({ code: 'not_found', message: 'Provider connection was not found.' });
@@ -14,7 +15,7 @@ export const POST = withGatewayIngress<{ id: string }>(async (_req, ctx, { id })
   if (connection.secretRef && !secret) {
     throw createGatewayError({ code: 'conflict', message: 'Provider credentials changed. Refresh the connection and try again.' });
   }
-  const result = await inferenceAdapter.testConnection(connection, secret ?? undefined);
+  const result = await testConnection(connection, secret);
   const current = await connectionStore.recordConnectionTest(id, connection.revision, result, ctx);
   if (!current) {
     throw createGatewayError({ code: 'conflict', message: 'Provider settings changed during the test. Refresh and try again.' });

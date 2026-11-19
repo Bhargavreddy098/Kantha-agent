@@ -1,9 +1,9 @@
-import { startGatewayChat } from '@/lib/gateway/providers/chat-service';
 import { readGatewayJson, withGatewayIngress } from '@/lib/gateway/server/ingress';
+import { getGatewayRegistry } from '@/lib/gateway/server/registry';
 
 export const maxDuration = 60;
 
 export const POST = withGatewayIngress(async (req, ctx) => {
-  const { response } = await startGatewayChat(await readGatewayJson(req), ctx);
-  return response;
+  const input = await readGatewayJson(req, 24 * 1024 * 1024);
+  return getGatewayRegistry().chatService.streamChat(input, ctx);
 });

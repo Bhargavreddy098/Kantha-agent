@@ -16,10 +16,12 @@ const keyCheckId = 'secret-key-check';
 export function loadGatewaySecretKey(db: GatewayDatabase): Buffer {
   const configured = process.env.GATEWAY_SECRET_KEY;
   if (configured) {
-    if (!/^[A-Za-z0-9+/]{43}=$/.test(configured)) {
+    const normalized = configured.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    if (!/^[A-Za-z0-9+/]{43}=$/.test(padded)) {
       throw new Error('GATEWAY_SECRET_KEY must be a base64-encoded 32-byte key.');
     }
-    return Buffer.from(configured, 'base64');
+    return Buffer.from(padded, 'base64');
   }
 
   if (process.env.NODE_ENV === 'production') {

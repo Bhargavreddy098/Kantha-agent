@@ -3,7 +3,7 @@ import { connection, NextRequest, NextResponse } from 'next/server';
 import { GATEWAY_HEADERS, type RequestContext } from '../contracts/context';
 import { createGatewayError, GatewayError, type GatewayErrorEnvelope } from '../contracts/errors';
 import { authenticateGatewayRequest } from './access';
-import { ensureGatewayReady } from './lifecycle';
+import { gatewayLifecycle } from './registry';
 
 export { requireGatewayOwner } from './access';
 
@@ -60,16 +60,12 @@ export function formatErrorResponse(
   error: unknown,
   requestId: string,
 ): { response: NextResponse; envelope: GatewayErrorEnvelope } {
-  const isGwError =
-    error instanceof GatewayError ||
-    (typeof error === 'object' &&
-      error !== null &&
-      ('code' in error || (error as { name?: string }).name === 'GatewayError'));
+  const isGwError = error instanceof GatewayError;
   const failure = isGwError
     ? (error as GatewayError)
     : createGatewayError({ code: 'internal_error', message: 'An internal gateway error occurred.' });
   if (!isGwError) {
-    console.error('Gateway request failed', error);
+    console.error('Gateway request failed', { requestId, errorName: error instanceof Error ? error.name : 'UnknownError' });
   }
   const { code, message, field, retryAfterSeconds } = failure;
   const envelope: GatewayErrorEnvelope = {
@@ -99,7 +95,7 @@ export function withGatewayIngress<TParams extends Record<string, string> = Reco
     const requestId = randomUUID();
     try {
       const ctx = extractRequestContext(req, requestId);
-      if (!options?.skipReadinessCheck) ensureGatewayReady();
+      if (!options?.skipReadinessCheck) gatewayLifecycle.ensureReady();
       const resolvedParams = (await context?.params ?? {}) as TParams;
       const response = await handler(req, ctx, resolvedParams);
       response.headers.set(GATEWAY_HEADERS.REQUEST_ID, requestId);

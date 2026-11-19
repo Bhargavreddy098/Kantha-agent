@@ -1,9 +1,9 @@
 import type { IConnectionStore, IModelCatalog, ISecretStore } from '../contracts/adapters';
 import type { RequestContext } from '../contracts/context';
-import type { DiscoverModelsResult, DiscoveredModelSummary } from '../contracts/connection';
+import type { DiscoverModelsResult } from '../contracts/connection';
 import type { GatewayModel, ModelListQuery } from '../contracts/model';
-import { createGatewayError, GatewayError } from '../contracts/errors';
-import { makeProviderFetch } from './egress';
+import { createGatewayError } from '../contracts/errors';
+import { fetchProviderModelIds } from './provider-model-list';
 
 const capabilities = { chat: true, streaming: true, reasoning: false, tools: false, vision: false };
 
@@ -11,10 +11,9 @@ export class ModelCatalog implements IModelCatalog {
   constructor(private readonly connections: IConnectionStore, private readonly secrets: ISecretStore) {}
 
   async listModels(query: ModelListQuery, ctx: RequestContext): Promise<GatewayModel[]> {
-    const allConnections = await this.connections.listConnections(ctx);
-    const eligible = allConnections.filter((connection) =>
-      connection.status === 'active' &&
-      (!query.connectionId || connection.id === query.connectionId));
+    const specific = query.connectionId ? await this.connections.getConnection(query.connectionId, ctx) : undefined;
+    const connections = query.connectionId ? (specific ? [specific] : []) : await this.connections.listConnections(ctx);
+    const eligible = connections.filter((connection) => connection.status === 'active');
     const search = query.search?.toLowerCase();
     const models: GatewayModel[] = eligible.flatMap((connection) => connection.eligibleModels.map((id) => ({
       id,
@@ -42,6 +41,31 @@ export class ModelCatalog implements IModelCatalog {
     return matches[0] ?? null;
   }
 
+  async resolveChatSelection(input: { connectionId?: string; modelId?: string }, ctx: RequestContext) {
+    // Explicit selections must be replayable even if the provider was changed after submission.
+    let { connectionId, modelId } = input;
+    if (!connectionId || !modelId) {
+      if (modelId && !connectionId) {
+        connectionId = (await this.getModel(modelId, ctx))?.connectionId;
+      }
+      const connections = await this.connections.listConnections(ctx);
+      const selected = connections.find((connection) =>
+        connection.status === 'active' &&
+        (!connectionId || connection.id === connectionId) &&
+        (modelId ? connection.eligibleModels.includes(modelId) : connection.eligibleModels.length > 0)
+      );
+      connectionId = selected?.id;
+      modelId = modelId ?? selected?.eligibleModels[0];
+    }
+    if (!connectionId || !modelId) {
+      throw createGatewayError({
+        code: 'invalid_request', message: 'Select an eligible model from an active provider connection.',
+        field: 'model', requestId: ctx.requestId,
+      });
+    }
+    return { connectionId, modelId };
+  }
+
   async discoverModels(connectionId: string, ctx: RequestContext): Promise<DiscoverModelsResult> {
     const connection = await this.connections.getConnection(connectionId, ctx);
     if (!connection || connection.status === 'revoked') {
@@ -51,51 +75,8 @@ export class ModelCatalog implements IModelCatalog {
     if (connection.secretRef && !secret) {
       throw createGatewayError({ code: 'conflict', message: 'Provider credentials changed. Refresh the connection and try again.' });
     }
-    let models: DiscoveredModelSummary[];
-    try {
-      const response = await makeProviderFetch(connection.endpoint)(connection.endpoint + '/models', {
-        headers: { accept: 'application/json', ...(secret ? { authorization: 'Bearer ' + secret } : {}) },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!response.ok) {
-        await response.body?.cancel();
-        const invalid = response.status === 401 || response.status === 403;
-        throw createGatewayError({
-          code: response.status === 429 ? 'rate_limited' : 'upstream_failed',
-          message: invalid ? 'The provider rejected the configured credential.' : 'The provider could not list models.',
-        });
-      }
-      const declaredSize = Number(response.headers.get('content-length'));
-      if (declaredSize > 2 * 1024 * 1024) {
-        await response.body?.cancel();
-        throw createGatewayError({ code: 'upstream_failed', message: 'The provider model response was too large.' });
-      }
-      const raw = await response.json() as { data?: unknown; models?: unknown } | unknown[];
-      const values = Array.isArray(raw) ? raw : raw?.data ?? raw?.models;
-      if (!Array.isArray(values)) {
-        throw createGatewayError({ code: 'upstream_failed', message: 'The provider returned an invalid model list.' });
-      }
-      const ids = new Set<string>();
-      for (const value of values.slice(0, 5000)) {
-        const id = typeof value === 'string' ? value : value?.id ?? value?.name;
-        if (typeof id === 'string' && id.trim() && id.length <= 256) ids.add(id);
-      }
-      models = [...ids].sort().map((id) => ({ id, name: id, provider: connection.providerType, capabilities }));
-    } catch (error) {
-      if (
-        error instanceof GatewayError ||
-        (typeof error === 'object' &&
-          error !== null &&
-          ('code' in error || (error as { name?: string }).name === 'GatewayError'))
-      ) {
-        throw error;
-      }
-      const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
-      throw createGatewayError({
-        code: timeout ? 'upstream_timeout' : 'upstream_failed',
-        message: timeout ? 'The provider timed out during discovery.' : 'Could not reach the provider for model discovery.',
-      });
-    }
+    const ids = await fetchProviderModelIds(connection, secret);
+    const models = ids.map((id) => ({ id, name: id, provider: connection.providerType, capabilities }));
 
     await this.connections.updateConnection(connectionId, {
       eligibleModels: models.map((model) => model.id),

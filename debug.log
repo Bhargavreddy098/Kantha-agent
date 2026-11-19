@@ -1,4 +1,14 @@
-[1115/151956.202:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.
-[1115/151956.245:ERROR:ui\gl\angle_platform_impl.cc:47] vulkan_icd.cpp:158 (angle::vk::ScopedVkLoaderEnvironment::ScopedVkLoaderEnvironment): Error setting CWD for Vulkan layers init.
-[1115/151956.311:WARNING:ui\gl\angle_platform_impl.cc:52] vulkan_icd.cpp:388 (angle::vk::ChoosePhysicalDevice): Preferred device ICD not found. Using default physicalDevice instead.
-[1115/152001.218:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.
+[1118/151624.590:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.
+[1118/151624.744:ERROR:ui\gl\angle_platform_impl.cc:47] vulkan_icd.cpp:158 (angle::vk::ScopedVkLoaderEnvironment::ScopedVkLoaderEnvironment): Error setting CWD for Vulkan layers init.
+[1118/151625.969:WARNING:ui\gl\angle_platform_impl.cc:52] vulkan_icd.cpp:388 (angle::vk::ChoosePhysicalDevice): Preferred device ICD not found. Using default physicalDevice instead.
+[1118/151629.600:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.
+[1119/091946.969:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.
+[1119/091946.988:ERROR:ui\gl\angle_platform_impl.cc:47] vulkan_icd.cpp:158 (angle::vk::ScopedVkLoaderEnvironment::ScopedVkLoaderEnvironment): Error setting CWD for Vulkan layers init.
+[1119/091947.049:WARNING:ui\gl\angle_platform_impl.cc:52] vulkan_icd.cpp:388 (angle::vk::ChoosePhysicalDevice): Preferred device ICD not found. Using default physicalDevice instead.
+[1119/091951.978:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.
+[1119/092020.402:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.
+[1119/092020.434:ERROR:ui\gl\angle_platform_impl.cc:47] vulkan_icd.cpp:158 (angle::vk::ScopedVkLoaderEnvironment::ScopedVkLoaderEnvironment): Error setting CWD for Vulkan layers init.
+[1119/092020.499:WARNING:ui\gl\angle_platform_impl.cc:52] vulkan_icd.cpp:388 (angle::vk::ChoosePhysicalDevice): Preferred device ICD not found. Using default physicalDevice instead.
+[1119/092025.414:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.
+[1119/092035.427:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.
+[1119/092055.438:WARNING:net\dns\dns_config_service_win.cc:609] Failed to read DnsConfig.

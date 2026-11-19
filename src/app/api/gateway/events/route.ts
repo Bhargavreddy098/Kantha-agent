@@ -47,7 +47,14 @@ export const GET = withGatewayIngress(async (req, ctx) => {
     throw new GatewayError({ code: 'invalid_request', message: 'Event cursor must be a non-negative integer.', requestId: ctx.requestId });
   }
 
+  req.signal.throwIfAborted();
+  const release = registry.eventCapacity.acquire(ctx);
   const disconnect = new AbortController();
+  const stop = () => {
+    release();
+    disconnect.abort();
+  };
+  req.signal.addEventListener('abort', stop, { once: true, signal: disconnect.signal });
   const signal = AbortSignal.any([req.signal, disconnect.signal]);
   const subscription = registry.eventFeed.subscribe(sessionId, cursor, ctx, signal)[Symbol.asyncIterator]();
   let next: Promise<IteratorResult<GatewayEvent>> | undefined;
@@ -67,7 +74,8 @@ export const GET = withGatewayIngress(async (req, ctx) => {
         });
         const item = await Promise.race([next, heartbeat]);
         if (signal.aborted) {
-          if (!disconnect.signal.aborted) controller.close();
+          controller.close();
+          stop();
           return;
         }
         if (item === HEARTBEAT) {
@@ -78,18 +86,19 @@ export const GET = withGatewayIngress(async (req, ctx) => {
         if (!item.done) controller.enqueue(encoder.encode(eventFrame(item.value)));
         if (item.done || item.value.type === 'resync.requested') {
           controller.close();
-          disconnect.abort();
+          stop();
           await subscription.return?.();
         }
       } catch {
         if (!disconnect.signal.aborted) controller.close();
-        disconnect.abort();
+        stop();
+        await subscription.return?.();
       } finally {
         clearTimeout(timer);
       }
     },
     async cancel() {
-      disconnect.abort();
+      stop();
       await subscription.return?.();
     },
   });

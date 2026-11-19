@@ -5,9 +5,31 @@ import { readGatewayJson, withGatewayIngress } from '@/lib/gateway/server/ingres
 import { getGatewayRegistry } from '@/lib/gateway/server/registry';
 
 
-export const GET = withGatewayIngress(async (_req, ctx) => {
-  const sessions = await getGatewayRegistry().runService.listSessions(ctx);
-  return NextResponse.json({ sessions, total: sessions.length });
+export const GET = withGatewayIngress(async (req, ctx) => {
+  const service = getGatewayRegistry().runService;
+  const { searchParams } = req.nextUrl;
+  if (!searchParams.has('limit') && !searchParams.has('offset')) {
+    const sessions = await service.listSessions(ctx);
+    return NextResponse.json({ sessions, total: sessions.length });
+  }
+
+  const limit = Number(searchParams.get('limit') ?? 50);
+  const offset = Number(searchParams.get('offset') ?? 0);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 ||
+      !Number.isSafeInteger(offset) || offset < 0 || offset > Number.MAX_SAFE_INTEGER - limit) {
+    throw new GatewayError({
+      code: 'invalid_request', requestId: ctx.requestId,
+      message: 'Use a limit from 1 to 100 and a non-negative offset.',
+    });
+  }
+
+  const page = await service.listSessions(ctx, limit + 1, offset);
+  const sessions = page.slice(0, limit);
+  return NextResponse.json({
+    sessions,
+    total: sessions.length,
+    nextOffset: page.length > limit ? offset + limit : null,
+  });
 });
 
 export const POST = withGatewayIngress(async (req, ctx) => {

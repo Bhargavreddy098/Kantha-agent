@@ -25,6 +25,12 @@ Shared schemas define public request, response and event types. Services accept 
 - Save credentials using a server-only secret reference. Settings may submit a transient newly entered secret. URLs, responses, browser persistence and telemetry carry safe metadata only. Validate configured egress, including redirects and DNS changes. Permit private endpoints only through an explicit deployment policy. Rotate or revoke a stored key atomically and redact upstream errors.
 - Admit and meter each actual provider attempt, including permitted retries and runtime helper calls. Bind the reservation to its attempt ID and settle once. Share one bounded retry policy with the upstream adapter, respect upstream retry guidance and avoid retry once output or a side effect has started. Propagate cancellation and record partial or unknown usage explicitly.
 
+## Capacity and overload
+
+- Inference and event subscriptions use independent process and workspace limits. Workspace saturation returns HTTP 429 with `rate_limited` for chat or `subscriber_overflow` for events. Process saturation returns HTTP 503 with `service_unavailable`. Capacity errors carry `Retry-After: 2`.
+- A rejected inference request creates no new run, implicit session, or budget reservation. Replays for an established session return the recorded run before admission. Inference retains capacity through finalization even after the browser disconnects.
+- An SSE request without a cursor returns a one-frame snapshot request. A validated subscription holds capacity until disconnect, resync, or stream cleanup. Protected status exposes `metrics.capacity` for the authenticated workspace. See [system design](SYSTEM-DESIGN.md) for lifecycle and rollout details.
+
 ## Session and streaming semantics
 
 - Persist workspace-scoped session and run IDs, submission keys, private runtime references, pending approvals, and the minimum recoverable event journal. Pin the selected model and any agent-definition version to the run. When session-backed chat lands, the existing chat route submits through the same run service and returns the run ID with its stream metadata. Each UI turn submits once and uses event reads for status. An identical submission key returns the same run. A conflicting payload for the same key returns a conflict. Enforce one active writer per session and coordinate ownership across workers.
