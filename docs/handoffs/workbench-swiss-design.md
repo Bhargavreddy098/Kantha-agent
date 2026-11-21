@@ -1,15 +1,15 @@
 # Handoff for the Swiss Workbench redesign
 
-- **Scope** — Apply Swiss / International Typographic Style to the existing Web Workbench. Keep the frontend guide and agent instructions aligned with the Astryx-only component policy.
+- **Scope** — Apply Swiss / International Typographic Style to the existing Web Workbench and maintain the Astryx-only component policy.
 - **Status** — In review, 2026-11-21.
-- **Outcome** — The shell, stream, prompt dock, reconnection states, and terminal share a Helvetica hierarchy, asymmetric grid, square geometry, and warm neutral surfaces with a red accent. The existing xterm renderer reads the Astryx palette.
+- **Outcome** — The workbench uses a monochrome Astryx theme, an aligned session grid, and a compact heading with Activity and Terminal tabs. The first prompt sits below the empty-state guidance. The same composer docks beneath the stream once activity starts.
 - **Design reference** — [Frontend guide](../frontend/README.md) · [Shared theme](../../apps/web/src/swissTheme.ts) · [Layout](../../apps/web/src/index.css)
 
 ## Progress and working tree
 
-- The Web Workbench composes Astryx controls through public exports and uses semantic HTML for page structure.
-- The frontend guide, agent instructions, and stack references establish the same rules for new frontend work.
-- `apps/web/package.json` and `apps/web/vite.config.ts` had pre-existing changes. The existing work in `main.tsx`, `index.css`, and `terminal/TerminalView.tsx` formed the baseline for this redesign.
+- Astryx owns the shell dividers, tabs, controls, status indicators, code blocks, and cards. App CSS handles shared gutters, transcript rows, and composer and terminal layout.
+- Removed additional shell borders, duplicate palette and typography rules, a custom scrollbar, and unused Neutral font and theme stylesheet imports. xterm remains the terminal renderer and reads the shared palette.
+- `apps/web/package.json` and `apps/web/vite.config.ts` were already modified before the redesign.
 
 ## Verification
 
@@ -17,9 +17,10 @@
 | --- | --- |
 | `node node_modules/typescript/bin/tsc --noEmit -p apps/web/tsconfig.json` | Passed. |
 | `node apps/web/node_modules/vite/bin/vite.js build apps/web` | Passed. Vite warned about the main chunk exceeding 500 kB. |
-| gstack at 1440 × 900 and 390 × 844 | Verified the shared theme, connected shell, visible prompt label, and narrow-width layout without horizontal overflow. Mobile navigation opened and closed with Escape. |
-| gstack with an isolated daemon | Submitted a prompt with Enter and saw the prompt, tool call, and result render in the stream. Verified that xterm mounted and had rows at desktop width, and the Terminal view fit the mobile viewport. |
+| `git diff --check` | Passed. |
+| gstack at 1440 × 900 with an isolated daemon | Confirmed first-prompt placement. Enter submitted the prompt, Astryx code blocks rendered tool activity, and the composer moved to the bottom. Arrow Right and Enter opened Terminal, which rendered 43 rows. |
+| gstack at 390 × 844 | Activity fit without horizontal overflow, Terminal was hidden when inactive, and Escape closed the mobile navigation. |
 
 ## Resume
 
-Approval decisions, expired-session recovery, and PTY command input still need a browser check if this work is used for full end-to-end qualification. The local browser run covered rendering and streaming. Astryx emitted its runtime theme-injection warning in development.
+Approval submission, expired-session recovery, and interactive PTY command input were outside the browser checks for this visual refinement.
