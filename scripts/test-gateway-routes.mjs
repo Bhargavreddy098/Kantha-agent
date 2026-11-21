@@ -147,6 +147,7 @@ test('gateway HTTP workflow, tenant boundaries, cancellation and restart', { tim
     GATEWAY_MAX_ACTIVE_EVENT_STREAMS: '1',
     GATEWAY_MAX_WORKSPACE_EVENT_STREAMS: '1',
     GATEWAY_MAX_DAILY_BUDGET_USD: '1',
+    ORGO_API_KEY: '',
     GATEWAY_MODEL_PRICES: JSON.stringify({ 'custom:fixture-model': { inputPerMillion: 2, outputPerMillion: 4 } }),
     GATEWAY_MEMBERS: JSON.stringify([
       entry('operator', 'team', 'owner', ownerKey),
@@ -185,6 +186,11 @@ test('gateway HTTP workflow, tenant boundaries, cancellation and restart', { tim
   assert(!cookieHeader.includes(ownerKey));
   cookie = cookieHeader.split(';')[0];
   assert.equal((await login.json()).workspaceId, 'team');
+
+  const computerAgent = '/api/gateway/computer-agent';
+  assert.equal((await json(computerAgent, { method: 'POST', body: {}, browser: false, status: 401 })).code, 'unauthorized');
+  assert.equal((await json(computerAgent, { method: 'POST', body: {}, token: memberKey, browser: false, status: 403 })).code, 'forbidden');
+  assert.equal((await json(computerAgent, { method: 'POST', body: {}, status: 503 })).code, 'service_unavailable');
 
   const connections = '/api/gateway/connections';
   const create = { label: 'Fixture provider', providerType: 'custom', endpoint: providerOrigin + '/v1', apiKey: providerKey };

@@ -29,6 +29,8 @@ export type Collection =
   | 'audit'
   | 'metadata'
   | 'attempts'
+  | 'computer_runs'
+  | 'computer_actions'
   | 'harness_admissions'
   | 'harness_submissions'
   | 'harness_inbox'

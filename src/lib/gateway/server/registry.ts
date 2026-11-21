@@ -5,6 +5,7 @@ import { GatewayRunService } from '../runs/session-service';
 import { GatewayCapacity, readCapacityLimit } from './capacity';
 import { GatewayApprovalService } from './approval-service';
 import { GatewayChatService } from './chat-service';
+import { GatewayComputerAgentService } from './computer-agent-service';
 import { GatewayConnectionStore } from './connection-store';
 import { GatewayLifecycleManager } from './lifecycle';
 import { GatewaySecretStore, loadGatewaySecretKey } from './secret-store';
@@ -17,6 +18,7 @@ export interface GatewayRegistry {
   connectionStore: GatewayConnectionStore;
   modelCatalog: ModelCatalog;
   chatService: GatewayChatService;
+  computerAgent: GatewayComputerAgentService;
   eventFeed: GatewayEventFeedService;
   inferenceCapacity: GatewayCapacity;
   eventCapacity: GatewayCapacity;
@@ -58,6 +60,9 @@ export function createGatewayRegistry(options: { databasePath?: string; secretKe
       connectionStore,
       modelCatalog,
       chatService,
+      computerAgent: new GatewayComputerAgentService({
+        db: database, connections: connectionStore, secrets: secretStore, usage: usageService, capacity: inferenceCapacity,
+      }),
       eventFeed,
       inferenceCapacity,
       eventCapacity: new GatewayCapacity(
