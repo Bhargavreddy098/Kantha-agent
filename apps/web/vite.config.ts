@@ -11,7 +11,7 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 3000,
-    strictPort: true,
+    strictPort: false,
     proxy: {
       "/api": {
         target: DAEMON_TARGET,
@@ -21,7 +21,8 @@ export default defineConfig({
       "/ws": {
         target: DAEMON_WS_TARGET,
         ws: true,
-        changeOrigin: false, // Preserves browser WebSocket Origin for daemon validation
+        changeOrigin: false,
+        rewriteWsOrigin: false, // Explicitly preserves browser WebSocket Origin for daemon validation
       },
     },
   },

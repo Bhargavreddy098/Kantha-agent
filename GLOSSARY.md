@@ -1,5 +1,5 @@
 ## Glossary
-This file defines the domain terminology for Kantha Harness Engineering.
+This file defines the canonical domain terminology for Kantha Harness Engineering.
 
 ### Core Concepts
 
@@ -11,15 +11,18 @@ This file defines the domain terminology for Kantha Harness Engineering.
 * **Definition of Done**: Explicit, testable conditions required to mark a task as completed.
 * **Knowledge Visibility Gap**: The disconnection between knowledge discussed in chat sessions and the authoritative information available in the repository.
 
-### Authentication & Access Control
+### Authentication & Access Control (ADR-007)
 
-* **Automatic Local Session Authentication**: A zero-friction, cryptographic authentication model where the local daemon binds to loopback, generates a secure session secret, and grants browser access via a short-lived single-use pairing ticket without requiring manual credential entry.
+* **Automatic Local Session Authentication**: A zero-friction, cryptographic authentication architecture where the local daemon binds to loopback, generates in-memory session authority, and grants browser access via a short-lived single-use pairing ticket without requiring manual credential entry.
   * _Avoid_: Loopback Trust, Anonymous Loopback, Implicit Localhost Trust, Manual Token Auth
-* **Pairing Ticket**: A single-use, cryptographically random, short-lived (e.g. 60-second TTL) token passed via the initial launch URL that the client workbench exchanges once for an authenticated session cookie.
+* **Pairing Ticket**: A single-use, cryptographically random, ephemeral (60-second TTL) token passed via the launch URL fragment (`#ticket=...`) that the client workbench exchanges once via POST for an authenticated session cookie.
   * _Avoid_: Magic link, pairing code, handshake token, launch secret
-* **Session Secret**: Cryptographic signing material generated in-memory by the daemon per process instance, used to issue and validate authenticated browser session cookies and WebSocket upgrade requests.
+* **Session Secret**: Ephemeral cryptographic signing and session material generated in-memory by the daemon per process instance, used to validate client session cookies and WebSocket upgrade requests.
   * _Avoid_: Local token, auth token, master password
-* **Authenticated Browser Session**: A server-validated local session represented by an `HttpOnly`, `SameSite=Strict`, host-only cookie (`kantha_session`) issued after pairing ticket exchange, authenticating REST, SSE, and WebSocket channels.
+* **Authenticated Browser Session**: A server-validated local session represented by an `HttpOnly`, `SameSite=Strict`, host-only cookie named `kantha_session_<port>` issued after successful pairing ticket exchange, authenticating REST, SSE, and WebSocket channels.
+  * _Note on Port Scoping_: Under RFC 6265, browser cookies ignore TCP port numbers. The `_<port>` name suffix provides logical per-daemon session namespace separation, ensuring multiple workspaces running on different loopback ports do not collide or overwrite session state.
   * _Avoid_: Bearer token in localStorage, query param token, anonymous session
-* **Origin & Host Fencing**: Strict daemon HTTP/WebSocket middleware verifying that the `Host` header exactly matches loopback and `Origin` matches authorized local workbench origins, defending against DNS rebinding and cross-site request forgery.
+* **Origin & Host Fencing**: Strict daemon HTTP/WebSocket middleware verifying that the `Host` header strictly matches the configured loopback endpoint and `Origin` matches authorized local workbench origins, defending against DNS rebinding and cross-site request forgery.
   * _Avoid_: Permissive CORS, open loopback, localhost whitelist
+* **Protected CLI Credential**: A 256-bit cryptographically random token stored in `~/.kantha/daemon_<port>.token` with restrictive file permissions (0600 on POSIX, user-only ACL on Windows), used by independent local processes (e.g. `kantha open`) to authenticate against a running daemon via the `X-Kantha-CLI-Token` header.
+  * _Avoid_: Shared password, plaintext env token, unauthenticated local IPC

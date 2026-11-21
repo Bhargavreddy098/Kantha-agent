@@ -26,6 +26,10 @@ export interface DaemonServerOptions {
 export async function startDaemonServer(options: DaemonServerOptions = {}) {
   const port = options.port || 4000;
   const workspacePath = options.workspacePath || process.cwd();
+  const dataDir =
+    options.dataDir ||
+    process.env.KANTHA_DATA_DIR ||
+    path.resolve(workspacePath, ".kantha-data");
   const { db } = await createKanthaDb({ dbPath: options.dbPath });
 
   const isDev =
@@ -36,7 +40,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
   // In-memory authentication components per ADR-007
   const ticketRegistry = new PairingTicketRegistry({ ttlMs: 60_000 });
   const sessionStore = new SessionStore({ port });
-  const cliManager = new CliCredentialManager({ port, dataDir: options.dataDir });
+  const cliManager = new CliCredentialManager({ port, dataDir });
   const fencing = new IngressFencing({ port, devOriginAllowed: isDev });
 
   const initialTicket = ticketRegistry.createTicket();
@@ -126,6 +130,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
 
   // Event stream listeners per session
   const eventListeners = new Map<string, Set<(event: KanthaEvent) => void>>();
+  const activeSseResponses = new Set<http.ServerResponse>();
 
   const broadcastEvent = (sessionId: string, event: KanthaEvent) => {
     const listeners = eventListeners.get(sessionId);
@@ -266,12 +271,59 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
         return;
       }
 
+      // If called from a browser without CLI token, require valid Origin
+      const cliHeader = req.headers["x-kantha-cli-token"];
+      const isCli = typeof cliHeader === "string" && cliManager.verifyCliToken(cliHeader);
+      if (!isCli && (!origin || !fencing.isOriginValid(origin))) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Forbidden: Unauthorized or missing Origin" }));
+        return;
+      }
+
       const newTicket = ticketRegistry.createTicket();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
           ticket: newTicket,
           pairingUrl: `http://127.0.0.1:${port}/#ticket=${newTicket}`,
+        })
+      );
+      return;
+    }
+
+    // Automated Local Session Handshake (for local workbench dev)
+    // Verifies the origin is trusted local dev (127.0.0.1 / localhost) and sets session cookie
+    if (pathname === "/api/auth/handshake" && req.method === "GET") {
+      if (origin && !fencing.isOriginValid(origin)) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Forbidden: Unauthorized Origin" }));
+        return;
+      }
+
+      const existingCookie = fencing.extractSessionCookie(req.headers.cookie);
+      let sessionToken =
+        existingCookie && sessionStore.validateSession(existingCookie)
+          ? existingCookie
+          : null;
+
+      if (!sessionToken) {
+        sessionToken = sessionStore.createSession();
+      }
+
+      const isSecure =
+        req.headers["x-forwarded-proto"] === "https" ||
+        Boolean((req.socket as any).encrypted);
+      const secureAttr = isSecure ? "; Secure" : "";
+
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Set-Cookie": `${sessionStore.cookieName}=${sessionToken}; Path=/; HttpOnly; SameSite=Lax${secureAttr}`,
+      });
+      res.end(
+        JSON.stringify({
+          authenticated: true,
+          method: "local-session",
+          workspace: discoverWorkspace(),
         })
       );
       return;
@@ -400,6 +452,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       });
       res.write("data: " + JSON.stringify({ type: "connected", sessionId }) + "\n\n");
 
+      activeSseResponses.add(res);
       if (!eventListeners.has(sessionId)) {
         eventListeners.set(sessionId, new Set());
       }
@@ -409,6 +462,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       eventListeners.get(sessionId)!.add(listener);
 
       req.on("close", () => {
+        activeSseResponses.delete(res);
         eventListeners.get(sessionId)?.delete(listener);
       });
       return;
@@ -549,6 +603,16 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
     ticketRegistry.dispose();
     sessionStore.invalidateAll();
     cliManager.cleanup();
+
+    for (const sseRes of activeSseResponses) {
+      try {
+        sseRes.write("event: error\ndata: " + JSON.stringify({ error: "session_expired" }) + "\n\n");
+        sseRes.end();
+      } catch {
+        // ignore
+      }
+    }
+    activeSseResponses.clear();
 
     await new Promise<void>((resolve) => {
       wss.close(() => {

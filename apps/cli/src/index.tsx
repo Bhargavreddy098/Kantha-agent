@@ -8,7 +8,7 @@ import os from "node:os";
 function getDaemonTokenPath(port: number): string {
   const baseDir =
     process.env.KANTHA_DATA_DIR ||
-    path.join(os.homedir(), ".kantha");
+    path.resolve(process.cwd(), ".kantha-data");
   return path.join(baseDir, `daemon_${port}.token`);
 }
 

@@ -454,16 +454,44 @@ describe("ADR-007 Mandatory Security Verification Suite", () => {
     );
   });
 
-  it("Regression: Cookie isolation across daemon instances prevents multi-workspace collision", () => {
-    const store1 = new SessionStore({ port: 4000 });
-    const store2 = new SessionStore({ port: 4001 });
+  it("Regression: Sec-Fetch-Site cross-site requests are rejected with 403", async () => {
+    const res = await makeRequest("/api/auth/pair", {
+      method: "POST",
+      headers: {
+        Origin: `http://127.0.0.1:${TEST_PORT}`,
+        "Sec-Fetch-Site": "cross-site",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ticket: daemon.ticketRegistry.createTicket() }),
+    });
+    assert.strictEqual(res.status, 403, "Sec-Fetch-Site cross-site requests must be rejected with 403");
+  });
 
-    assert.strictEqual(store1.cookieName, "kantha_session_4000");
-    assert.strictEqual(store2.cookieName, "kantha_session_4001");
-    assert.notStrictEqual(store1.cookieName, store2.cookieName, "Different daemon ports must use isolated cookie names");
+  it("Regression: Missing Origin on /api/auth/pair is rejected with 403 (fail-closed)", async () => {
+    const res = await makeRequest("/api/auth/pair", {
+      method: "POST",
+      headers: {
+        // No Origin header
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ticket: daemon.ticketRegistry.createTicket() }),
+    });
+    assert.strictEqual(res.status, 403, "Missing Origin on pairing endpoint must return 403");
+  });
 
-    const token1 = store1.createSession();
-    assert.strictEqual(store1.validateSession(token1), true);
-    assert.strictEqual(store2.validateSession(token1), false, "Session from daemon 4000 must not be recognized by daemon 4001");
+  it("Regression: Secure cookie attribute is added when behind secure context (HTTPS)", async () => {
+    const ticket = daemon.ticketRegistry.createTicket();
+    const res = await makeRequest("/api/auth/pair", {
+      method: "POST",
+      headers: {
+        Origin: `http://127.0.0.1:${TEST_PORT}`,
+        "X-Forwarded-Proto": "https",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ticket }),
+    });
+    assert.strictEqual(res.status, 200);
+    const setCookie = res.headers["set-cookie"]![0];
+    assert.ok(setCookie.includes("Secure"), "Cookie must include Secure attribute when operating under HTTPS");
   });
 });

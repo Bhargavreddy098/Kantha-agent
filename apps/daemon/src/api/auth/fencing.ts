@@ -26,7 +26,11 @@ export class IngressFencing {
     ]);
 
     if (this.devOriginAllowed) {
-      // Explicitly configured development origins (Vite dev servers on port 5173 or 3000)
+      // Explicitly configured development hosts and origins (Vite dev servers on port 3000 or 5173)
+      this.allowedHosts.add("127.0.0.1:3000");
+      this.allowedHosts.add("localhost:3000");
+      this.allowedHosts.add("127.0.0.1:5173");
+      this.allowedHosts.add("localhost:5173");
       this.allowedOrigins.add("http://127.0.0.1:5173");
       this.allowedOrigins.add("http://localhost:5173");
       this.allowedOrigins.add("http://127.0.0.1:3000");

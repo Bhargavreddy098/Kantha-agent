@@ -95,6 +95,22 @@ function KanthaAstryxWorkbench() {
       }
 
       if (sessionRes.status === 401) {
+        // Attempt automated dev handshake if visiting directly
+        try {
+          const handshakeRes = await fetch("/api/auth/handshake", { credentials: "include" });
+          if (handshakeRes.ok) {
+            const handshakeData = await handshakeRes.json();
+            if (handshakeData.authenticated) {
+              setConnectionState("connected");
+              if (handshakeData.workspace) setWorkspace(handshakeData.workspace);
+              loadWorkspaceData();
+              return;
+            }
+          }
+        } catch {
+          // Handshake failed or daemon unavailable
+        }
+
         // Daemon is online, but session is missing, expired, or daemon restarted
         setConnectionState("session_expired");
         return;

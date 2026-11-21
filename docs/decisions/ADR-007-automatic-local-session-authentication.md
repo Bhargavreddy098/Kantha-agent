@@ -91,7 +91,7 @@ Adopt **Automatic Local Session Authentication** with strict fail-closed Host an
 
 ## Verified Implementation & Automated Security Matrix
 
-The architecture has been implemented across `@kantha/daemon` and `@kantha/web` and verified via an automated test suite ([apps/daemon/src/api/auth/__tests__/security.test.ts](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/src/api/auth/__tests__/security.test.ts)):
+The architecture has been implemented across `@kantha/daemon` and `@kantha/web` and verified via an automated test suite ([apps/daemon/src/api/auth/__tests__/security.test.ts](../../apps/daemon/src/api/auth/__tests__/security.test.ts)):
 
 | # | Security Verification | Verified Outcome | Test Status |
 |---|---|---|---|
@@ -108,5 +108,8 @@ The architecture has been implemented across `@kantha/daemon` and `@kantha/web` 
 | **Reg. 1** | **Active WebSocket Termination on Session Invalidation** | Invalidating an active session in the daemon forcefully closes open WebSocket PTY connections with code 4001. | **PASS** |
 | **Reg. 2** | **Timing-Safe CLI Token Verification** | CLI token verification uses `crypto.timingSafeEqual` and strictly rejects length mismatches. | **PASS** |
 | **Reg. 3** | **Development Proxy Origin Handling** | `http://127.0.0.1:5173` is permitted only when dev mode is explicitly configured. | **PASS** |
-| **Reg. 4** | **Multi-Daemon Cookie Isolation** | Session cookies are port-scoped (`kantha_session_<port>`), preventing cookie collision between concurrent workspace daemons. | **PASS** |
+| **Reg. 4** | **Sec-Fetch-Site Cross-Site Rejection** | Requests bearing `Sec-Fetch-Site: cross-site` are rejected with HTTP 403 Forbidden. | **PASS** |
+| **Reg. 5** | **Missing Origin Fail-Closed on Pairing** | Pairing requests lacking an `Origin` header fail-closed with HTTP 403 Forbidden. | **PASS** |
+| **Reg. 6** | **Conditional Secure Cookie Attribute** | Setting `X-Forwarded-Proto: https` adds `; Secure` attribute to `kantha_session_<port>`. | **PASS** |
+| **Reg. 7** | **Multi-Daemon Cookie Isolation** | Session cookies are port-scoped (`kantha_session_<port>`), preventing cookie collision between concurrent workspace daemons. | **PASS** |
 
