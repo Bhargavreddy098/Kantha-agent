@@ -1,0 +1,261 @@
+# Orgo
+
+> Orgo is cloud computers for AI agents, with your own agents inside. Every Linux and Windows computer is its own isolated virtual machine with its own disk, a full desktop, a browser, and a terminal, reachable over HTTP and VNC. Linux and Windows are self-serve. A Mac or an iPhone 12 comes from Get one in the app while in stock, and the iPhone 17 is by request. A new computer is online in seconds and runs until you stop it.
+
+Links are relative to `https://docs.orgo.ai`. API base URL: `https://www.orgo.ai/api`.
+
+## Orientation
+
+- Send `Authorization: Bearer $ORGO_API_KEY` on every request. Keys begin with `sk_live_`; [create one](https://www.orgo.ai/start).
+- Spec 2.0.0 declares 114 operations in 14 groups, 38 of them GET.
+- A computer's `status` is one of `creating`, `running`, `restarting`, `updating`, `suspending`, `suspended`, `resuming`, `frozen`, `stopped`, `error`, `deleted`. `stop` freezes, so a stopped computer reads `frozen`.
+- `?screen=` is honoured by 8 actions only: screenshot, click, mouse-move, drag, type, key, scroll, bash. The rest run on the boot screen.
+- Plans and per-computer ceilings live at [orgo.ai/#pricing](https://www.orgo.ai/#pricing).
+- Also in the spec, without a page of their own: GET /templates/global/{namespace}/{name}, DELETE /templates/{namespace}/{name}/{version}/build, DELETE /templates/run, PATCH /workspaces/{id}, GET /computers/{id}/resize.
+
+## What Orgo is not
+
+- **Not a browser.** A browser tool gives an agent a browser tab. Orgo gives it a full computer.
+- **Not an AI agent.** Orgo provides the computer, not the agent. Bring Claude Computer Use, OpenAI's CUA, Hermes Agent, OpenClaw, or your own loop.
+- **Not a general cloud platform.** Orgo runs one thing: persistent computers for AI agents. That focus shapes the rest.
+
+## Get started
+
+- [Introduction](/introduction): Cloud computers for AI agents
+- [Quickstart](/quickstart): Your first computer in five minutes
+- [Dashboard](/guides/get-started-dashboard): No code needed
+- [For agents](/for-agents): Give an AI agent access in one approval
+- [Agent signups](/guides/agent-signup): An AI agent gets its own Orgo account…
+- [CLI](/guides/cli): Drive Orgo computers from your terminal
+- [MCP](/guides/mcp): Connect any MCP client to Orgo
+- [Claude Code skill](/guides/skill): Let Claude Code reach for a computer
+- [Troubleshooting](/guides/troubleshooting): Fix common API errors
+
+## Features
+
+- [Computer settings](/guides/computer-settings): What each setting on a computer's…
+- [Choose where a computer runs](/guides/computer-locations): Run a Linux or Windows computer in the…
+- [SSH](/guides/ssh): SSH into a Linux computer with your key
+- [Public URLs](/guides/public-urls): Share an app running on a computer at…
+- [Connectors](/guides/connectors): Give the agent on a computer access to…
+- [Workflows](/guides/workflows): Run a routine the same way every time
+- [Workspaces and clients](/guides/workspaces-and-clients): Organize computers into workspaces,…
+- [End times](/guides/computer-ends): Give a computer a set number of hours
+- [Models](/guides/models): Drive a computer with any model
+- [Bring your own key](/guides/bring-your-own-key): Pay for agent runs with your own OpenAI…
+- [Browser networking](/guides/browser-networking): Give a computer's Chrome a residential…
+- [Sites blocked on a residential IP](/guides/residential-blocked-sites): Every domain Orgo blocks on a…
+- [Identity tokens](/guides/instance-identity): A program on a Linux computer asks…
+- [Embedding](/guides/embed-vms): Put a live computer screen in your app
+- [Memory](/guides/memory): Agents that remember across sessions
+- [Invoicing](/guides/invoicing): Run Orgo for your clients from your own…
+
+## Billing
+
+- [Billing](/guides/billing): What each plan costs, how a computer is…
+- [Pricing](/guides/pricing): What a computer costs on your plan and…
+- [Computer sizes](/guides/instance-types): Pick a computer’s CPU, RAM, and disk
+- [Limits](/guides/account-limits): How many computers, workspaces and…
+- [Scaling](/guides/scaling): Give every user their own computer
+
+## Templates
+
+- [Templates](/guides/templates/introduction): Reproducible cloud computers, defined…
+- [Templates quickstart](/guides/templates/quickstart): Launch a curated template, then author…
+- [Template schema](/guides/templates/schema): Every field in the orgo.ai/v1 template…
+- [Secrets](/guides/templates/secrets): Let templates require API keys without…
+- [Triggers](/guides/templates/triggers): Reactive automation inside a template:…
+- [Examples](/guides/templates/examples): Complete, runnable templates you can…
+
+## Integrations
+
+- [Composio](/guides/composio): Give an agent built on Composio its own…
+- [OpenClaw](/guides/openclaw): Run OpenClaw on an Orgo computer
+- [Hermes Agent](/guides/hermes): Run Hermes Agent on an Orgo computer
+- [Latitude](/guides/latitude): See every agent run as a trace in…
+- [Claude Computer Use](/guides/claude-computer-use): Let Claude control an Orgo computer
+- [OpenAI Computer Use](/guides/openai-computer-use): Let GPT-6 Astra control an Orgo…
+- [Gemini Computer Use](/guides/gemini-computer-use): Control an Orgo computer with Gemini
+- [Agent S3](/guides/agent-s2): Let Agent S3 control an Orgo computer
+
+## Migrations
+
+- [Compare platforms](/guides/migrations/overview): How Orgo compares to Fly.io,…
+- [Migrate from Fly.io](/guides/migrations/fly-io): Move a workload off a Fly.io Machine…
+- [Migrate from DigitalOcean](/guides/migrations/digitalocean): Move a workload off a DigitalOcean…
+- [Migrate from Hetzner](/guides/migrations/hetzner): Move a workload off a Hetzner Cloud…
+- [Migrate from a VPS](/guides/migrate): Move Hermes Agent or OpenClaw from…
+
+## API overview
+
+- [API reference](/api-reference/introduction): Base URL, auth, and your first request
+- [Authentication](/api-reference/authentication): Create, scope, and rotate API keys
+
+## API keys API
+
+- [Key permissions](/api-reference/api-keys/permissions): What a restricted key can call,…
+- [Manage keys](/api-reference/api-keys/manage): Create, list, change and revoke keys…
+- [Expiry and rotation](/api-reference/api-keys/expiry-and-rotation): How long a key lives, what an expired…
+- [Computer keys](/api-reference/api-keys/computer-keys): Limit a key to one workspace or one…
+
+## Support API
+
+- [POST /v1/support/ask](/api-reference/support/ask)
+
+## Account API
+
+- [GET /account/capacity](/api-reference/account/capacity)
+- [POST /account/capacity](/api-reference/account/add-capacity)
+- [PATCH /account/capacity](/api-reference/account/reduce-capacity)
+- [GET /billing/residential-data](/api-reference/account/residential-data)
+- [POST /billing/residential-data/buy](/api-reference/account/buy-residential-data)
+
+## Agent signups API
+
+- [POST /v1/agents](/api-reference/agents/signup)
+- [GET /v1/agents/claim](/api-reference/agents/get-claim)
+- [POST /v1/agents/claim](/api-reference/agents/refresh-claim)
+
+## Clients API
+
+- [GET /v1/accounts](/api-reference/clients/list)
+- [POST /v1/accounts](/api-reference/clients/create)
+- [GET /v1/accounts/{id}](/api-reference/clients/get)
+- [PATCH /v1/accounts/{id}](/api-reference/clients/update)
+- [DELETE /v1/accounts/{id}](/api-reference/clients/close)
+- [POST /v1/accounts/{id}/key](/api-reference/clients/replace-key)
+- [POST /v1/accounts/{id}/transfer](/api-reference/clients/transfer)
+- [DELETE /v1/accounts/{id}/transfer](/api-reference/clients/withdraw-transfer)
+- [GET /v1/accounts/{id}/billing](/api-reference/clients/get-billing)
+- [POST /v1/accounts/{id}/billing](/api-reference/clients/send-payment-link)
+- [PATCH /v1/accounts/{id}/billing](/api-reference/clients/update-billing)
+- [DELETE /v1/accounts/{id}/billing](/api-reference/clients/stop-billing)
+- [POST /v1/accounts/{id}/billing/resend](/api-reference/clients/resend-payment-link)
+- [GET /v1/accounts/{id}/billing/payments](/api-reference/clients/list-payments)
+- [POST /v1/accounts/{id}/billing/payments/{payment_id}/refund](/api-reference/clients/refund-payment)
+
+## Computer use API
+
+- [POST /v1/chat/completions](/api-reference/chat/completions)
+- [Threads](/api-reference/chat/threads): Stored transcripts for chat completions
+
+## Workspaces API
+
+- [POST /workspaces](/api-reference/workspaces/create)
+- [GET /workspaces](/api-reference/workspaces/list)
+- [GET /workspaces/{id}](/api-reference/workspaces/get)
+- [POST /workspaces/{id}/delete](/api-reference/workspaces/delete)
+
+## Computers API
+
+- [POST /computers](/api-reference/computers/create)
+- [GET /computers/gpu-options](/api-reference/computers/gpu-options)
+- [GET /computers/{id}](/api-reference/computers/get)
+- [PATCH /computers/{id}](/api-reference/computers/update)
+- [POST /computers/{id}/extend](/api-reference/computers/extend)
+- [POST /computers/{id}/clone](/api-reference/computers/clone)
+- [POST /computers/{id}/fork](/api-reference/computers/fork)
+- [PATCH /computers/{id}/move](/api-reference/computers/move)
+- [PATCH /computers/{id}/resize](/api-reference/computers/resize)
+- [DELETE /computers/{id}](/api-reference/computers/delete)
+- [GET /computers/{id}/vnc-password](/api-reference/computers/vnc-password)
+- [GET /computers/{id}/ssh](/api-reference/computers/ssh-get)
+- [POST /computers/{id}/ssh](/api-reference/computers/ssh-enable)
+- [DELETE /computers/{id}/ssh](/api-reference/computers/ssh-disable)
+- [GET /computers/{id}/residential-proxy](/api-reference/computers/residential-proxy-get)
+- [POST /computers/{id}/residential-proxy](/api-reference/computers/residential-proxy)
+- [POST /computers/{id}/webrtc](/api-reference/computers/webrtc)
+- [GET /computers/{id}/auto-stop](/api-reference/computers/auto-stop-get)
+- [PATCH /computers/{id}/auto-stop](/api-reference/computers/auto-stop)
+- [Check health](/api-reference/computers/health): Run health checks on a computer without…
+- [Heal computer](/api-reference/computers/heal): Try to recover a computer that is not…
+- [POST /computers/{id}/secrets/sync](/api-reference/computers/sync-secrets)
+- [Save secret](/api-reference/secrets/create): Save a secret to your account or to one…
+- [POST /secrets/apply](/api-reference/secrets/apply)
+
+## Public urls API
+
+- [GET /computers/{id}/public-urls](/api-reference/public-urls/list)
+- [POST /computers/{id}/public-urls](/api-reference/public-urls/create)
+- [PATCH /computers/{id}/public-urls/{urlId}](/api-reference/public-urls/update)
+- [DELETE /computers/{id}/public-urls/{urlId}](/api-reference/public-urls/delete)
+- [GET /computers/{id}/public-urls/{urlId}/password](/api-reference/public-urls/password)
+
+## Lifecycle API
+
+- [POST /computers/{id}/start](/api-reference/computers/start)
+- [POST /computers/{id}/stop](/api-reference/computers/stop)
+- [POST /computers/{id}/restart](/api-reference/computers/restart)
+- [POST /computers/{id}/suspend](/api-reference/computers/suspend)
+- [POST /computers/{id}/resume](/api-reference/computers/resume)
+- [GET /computers/{id}/suspension](/api-reference/computers/suspension)
+- [GET /computers/{id}/operations/{operationId}](/api-reference/computers/operation)
+
+## Actions API
+
+- [GET /computers/{id}/screenshot](/api-reference/computers/screenshot)
+- [POST /computers/{id}/click](/api-reference/computers/click)
+- [POST /computers/{id}/mouse-move](/api-reference/computers/mouse-move)
+- [POST /computers/{id}/drag](/api-reference/computers/drag)
+- [POST /computers/{id}/type](/api-reference/computers/type)
+- [POST /computers/{id}/key](/api-reference/computers/key)
+- [POST /computers/{id}/scroll](/api-reference/computers/scroll)
+- [POST /computers/{id}/wait](/api-reference/computers/wait)
+- [POST /computers/{id}/bash](/api-reference/computers/bash)
+- [POST /computers/{id}/exec](/api-reference/computers/exec)
+- [Terminal WebSocket](/api-reference/computers/terminal): Interactive PTY shell over WebSocket…
+- [Audio WebSocket](/api-reference/computers/audio): Stream a computer's speaker over…
+- [Events WebSocket](/api-reference/computers/events): Subscribe to desktop events: window…
+
+## Screens API
+
+- [GET /computers/{id}/screens](/api-reference/screens/list)
+- [POST /computers/{id}/screens](/api-reference/screens/create)
+- [GET /computers/{id}/screens/{screenId}](/api-reference/screens/get)
+- [PATCH /computers/{id}/screens/{screenId}](/api-reference/screens/resize)
+- [DELETE /computers/{id}/screens/{screenId}](/api-reference/screens/delete)
+
+## Files API
+
+- [POST /files/upload](/api-reference/files/upload)
+- [POST /files/uploads](/api-reference/files/start-upload)
+- [POST /files/uploads/complete](/api-reference/files/complete-upload)
+- [POST /files/export](/api-reference/files/export)
+- [GET /files](/api-reference/files/list)
+- [GET /files/download](/api-reference/files/download)
+- [DELETE /files/delete](/api-reference/files/delete)
+
+## Templates API
+
+- [GET /template-schema](/api-reference/templates/schema)
+- [GET /templates](/api-reference/templates/list)
+- [POST /templates](/api-reference/templates/publish)
+- [POST /templates/validate](/api-reference/templates/validate)
+- [GET /templates/{namespace}/{name}](/api-reference/templates/list-versions)
+- [GET /templates/{namespace}/{name}/{version}](/api-reference/templates/get)
+- [DELETE /templates/{namespace}/{name}/{version}](/api-reference/templates/delete)
+- [POST /templates/{namespace}/{name}/{version}/build](/api-reference/templates/build)
+- [GET /templates/{namespace}/{name}/{version}/build](/api-reference/templates/build-status)
+- [GET /templates/{namespace}/{name}/{version}/build/events](/api-reference/templates/build-events)
+- [GET /templates/global](/api-reference/templates/list-curated)
+- [POST /templates/run](/api-reference/templates/test-run)
+
+## Workflows API
+
+- [GET /workflows](/api-reference/workflows/list)
+- [POST /workflows](/api-reference/workflows/create)
+- [GET /workflows/{id}](/api-reference/workflows/get)
+- [PUT /workflows/{id}](/api-reference/workflows/replace)
+- [PATCH /workflows/{id}](/api-reference/workflows/update)
+- [DELETE /workflows/{id}](/api-reference/workflows/delete)
+- [POST /workflows/{id}/validate](/api-reference/workflows/validate)
+- [POST /workflows/{id}/runs](/api-reference/workflows/start-run)
+- [GET /workflows/{id}/runs](/api-reference/workflows/list-runs)
+- [GET /workflows/{id}/runs/{runId}](/api-reference/workflows/get-run)
+- [POST /workflows/{id}/runs/{runId}/stop](/api-reference/workflows/stop-run)
+- [POST /workflows/{id}/runs/{runId}/answer](/api-reference/workflows/answer-run)
+- [GET /workflows/{id}/events](/api-reference/workflows/events)
+
+## Optional
+
+- [llms-full.txt](https://docs.orgo.ai/llms-full.txt): every page above, concatenated.

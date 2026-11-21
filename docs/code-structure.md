@@ -1,31 +1,20 @@
-# Source structure
+# Code Structure & Monorepo Layout
 
-This map describes the current repository. The [gateway contracts](gateway/CONTRACTS.md)
-and [work plan](gateway/IMPLEMENTATION-PLAN.md) describe boundaries and planned work;
-they do not imply that every planned behavior is implemented.
+This document describes the canonical monorepo structure for Kantha, organized as a **Turborepo + Bun Workspaces** project.
 
-| Location | Responsibility |
-| --- | --- |
-| `src/app` | Next.js App Router pages, shared workspace shell, styles and HTTP route handlers. |
-| `src/ui` | The UI component catalog. Follow the [frontend composition rules](frontend/README.md) before changing screens. |
-| `src/components` | Previous feature views retained for reference during migration. |
-| `src/hooks` | React hooks shared across feature components (`useChatStream`, `useConversations`, `useAIProvider`, `useGatewayEvents`). |
-| `src/lib/chat` | Browser chat storage, attachments and stream parsing. |
-| `src/lib/gateway/client.ts` | Shared browser gateway requests, client authentication state and event names. |
-| `src/lib/gateway/contracts` | Shared gateway types and boundary validation. |
-| `src/lib/gateway/providers` | Provider transport, model catalog, pricing and chat service. |
-| `src/lib/gateway/runs` | Session and run state, events and recovery services. |
-| `src/lib/gateway/server` | Server-side access, secrets, storage and service composition. |
-| `src/lib/gateway/fixtures` | Gateway fixture data and verification. |
-| `src/types` | Shared chat and domain types. |
+| Location | Responsibility | Stack |
+|---|---|---|
+| `apps/daemon` | Persistent local background service running the API gateway and coding harness. | Bun v1.4+, Effect-TS (`effect`, `HttpApi`), Vercel AI SDK, `bun-pty`, ripgrep |
+| `apps/web` | Web Workbench user interface: session dashboard, chat, diff viewer, interactive terminal. | Vite 6+, React 19, TanStack Router, TanStack Query, Tailwind CSS v4, Radix UI, `@xterm/xterm` |
+| `apps/cli` | Terminal user interface for developers working directly in the console. | React Ink, Bun |
+| `packages/protocol` | Authoritative wire contracts, schemas, and event definitions shared across apps. | Effect Schema |
+| `packages/db` | Local persistence schemas, SQLite client initialization, and migrations. | `bun:sqlite`, Drizzle ORM |
+| `packages/ui` | Reusable Radix UI primitives and Tailwind v4 design tokens. | React 19, Tailwind CSS v4, Radix UI |
 
-Keep route handlers focused on HTTP boundaries and compose domain services behind
-them. Keep server credentials and storage out of browser imports. Keep `src/lib/utils.ts`
-focused on `cn()`. Use descriptive names and TypeScript narrowing at untrusted
-boundaries. Prefer `async`/`await` when it makes asynchronous flow clearer, but
-preserve transaction lifetime, cancellation, error handling and operation order.
+---
 
-Before modifying Next.js behavior, read the relevant guide in
-`node_modules/next/dist/docs/`. Run the applicable checks in
-[the gateway running guide](gateway/RUNNING.md); fixtures and a production build
-do not replace the documented browser and deployment checks.
+## Architectural Boundaries
+
+1. **Daemon owns execution and persistence:** The daemon alone manages the SQLite database, JSONL event files, child processes, Git worktrees, and provider API keys.
+2. **Clients are stateless observers & controllers:** `apps/web` and `apps/cli` interact strictly with the daemon via HTTP, SSE, and WebSockets.
+3. **No circular dependencies:** Apps may depend on packages (`packages/*`), but packages must never import from apps.

@@ -1,49 +1,71 @@
-# Run the Kantha gateway
+# Running the Kantha Local Daemon & Workbench
 
-Use Node.js 24, npm and a persistent filesystem. The Next.js Node process serves the dashboard, same-origin API and provider streams. A local or single-instance deployment is the supported starting point for this build.
+Kantha uses an **automated local-first architecture** modeled after modern coding assistants (OpenCode, Cursor, Claude Code). There are **no manual access tokens, no login forms, and no cloud databases to configure**.
 
-## Local setup
+## Quick Start (Zero-Friction Launch)
 
-1. Copy the gateway settings in [the environment example](../../.env.example) into `.env.local` alongside any application settings you already use. Set `GATEWAY_ACCESS_TOKEN` to an independent random access token. Run `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"` to generate one. Use the token to sign in to the app. Provider keys are entered separately in Settings.
-2. Run `npm install` if dependencies are absent, then `npm run dev`. Open the origin printed by Next.js. If you set `GATEWAY_ORIGIN`, it must match that browser origin, including the port.
-3. Open **Settings → Model providers**. Add a connection and enter the provider Base URL and API key. Save, test and discover models. **Chat** lists discovered models from active connections. Configure an exact private origin in `GATEWAY_PRIVATE_ORIGINS` to use an explicitly approved local test provider.
-4. Send a prompt in **Chat**. Stop requests cancellation from the server and retains partial output. Reload to recover the conversation, run status and any pending decision. **Try approval** creates a separate inert tool run. **Settings → Usage** reports admitted attempts and measured usage.
+Run the daemon and web workbench concurrently:
 
-## Deployment settings
+```bash
+# Start both daemon and web workbench
+pnpm dev
 
-| Setting | Purpose |
-|---|---|
-| `GATEWAY_ACCESS_TOKEN` | Random owner token for a single workspace. Minimum 32 URL-safe characters. Rotate it to revoke existing sessions. |
-| `GATEWAY_WORKSPACE_ID` | Workspace for the single-owner mode. Defaults to `kantha`. |
-| `GATEWAY_MEMBERS` | JSON array of provisioned `{actorId, workspaceId, role, tokenSha256}` entries. Role is `owner` or `member`. It takes precedence over single-owner configuration. Use a distinct random token per membership and store the lowercase SHA-256 digest. Treat the configuration as sensitive. Owners manage provider connections. |
-| `GATEWAY_ORIGIN` | Canonical app origin. Set the HTTPS origin explicitly when deploying behind a reverse proxy. Loopback can use HTTP. Keep request paths and SSE streaming on this origin. |
-| `GATEWAY_DB_PATH` | Durable SQLite file on a persistent volume. Defaults to `.gateway-data/gateway.sqlite`. |
-| `GATEWAY_SECRET_KEY` | Base64 of 32 random bytes. Required in production. Generate with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`. Development generates a separate local key file when this setting is absent. Back up the key separately and retain it when restoring the database. |
-| `GATEWAY_PRIVATE_ORIGINS` | Comma-separated exact trusted private or HTTP origins. Public providers use HTTPS. Provider transport pins approved IPv4 targets and rejects redirects. |
-| `GATEWAY_MAX_ACTIVE_INFERENCE` / `GATEWAY_MAX_WORKSPACE_INFERENCE` | Concurrent inference slots per process and per workspace within that process. Defaults are 32 and 4. |
-| `GATEWAY_MAX_ACTIVE_EVENT_STREAMS` / `GATEWAY_MAX_WORKSPACE_EVENT_STREAMS` | Concurrent event subscriptions per process and per workspace within that process. Defaults are 128 and 12. |
-| `GATEWAY_MAX_DAILY_TOKENS` | Per-workspace UTC day ceiling. Defaults to 200,000. Admission accounts for active reservations and estimates when provider usage is unavailable. |
-| `GATEWAY_MODEL_PRICES` | Optional JSON object keyed by `providerType:modelId` or `connectionId:modelId`. Each value has numeric `inputPerMillion` and `outputPerMillion` USD rates. Rates are operator-provided. |
-| `GATEWAY_MAX_DAILY_BUDGET_USD` | Optional per-workspace USD ceiling. When set, an unpriced model is denied at admission. |
+# Or run them individually:
+pnpm dev:daemon   # Starts Bun Effect Daemon on http://localhost:4000
+pnpm dev:web      # Starts Vite React 19 Workbench on http://localhost:3000
+```
 
-Capacity settings take positive integers and are read when the gateway starts. Status reports occupancy for the caller’s workspace on the serving process. The [system design guide](SYSTEM-DESIGN.md) describes the HTTP overload contract and replica considerations.
+Open `http://localhost:3000` in your browser. The web workbench **automatically authenticates via loopback trust** and instantly auto-discovers your local git repository and active branch.
 
-## Provider inference and uploads
+---
 
-Chat uses the Vercel AI SDK for OpenAI, Anthropic and OpenAI-compatible provider connections. Sign in and save a connection in Settings to use it. For deployments that previously used `OPENAI_API_KEY`, `OPENAI_API_BASE_URL` and `OPENAI_MODEL`, enter the equivalent values in a saved provider connection and discover or select the model there.
+## How Modern Coding Assistants Automate This
 
-Both chat routes return AI SDK UI-message streams. The browser keeps a local transcript in IndexedDB, and the gateway journals submitted message content, including image data and extracted document text, with the workspace session. Treat gateway storage and backups as conversation data.
+### 1. Zero-Touch Loopback Trust (No Manual Access Tokens)
+Legacy tools forced developers to generate random tokens via shell commands (`node -e "..."`), copy them into clipboard, and paste them into a blocking login form (`"Workspace access token"`). If the server was slow or restarted, users got locked out with:
+> *"Workspace access is unavailable. Try signing in again."*
 
-| Setting | Purpose |
-|---|---|
-| `UPLOAD_MAX_FILE_SIZE_MB` | Per-file upload cap (1–50 MB). Defaults to 20. |
-| `UPLOAD_MAX_TEXT_LENGTH` | Extracted document text cap in characters (1,000–400,000). Defaults to 100,000. |
+**Modern Automated Approach:**
+- Kantha binds to the developer's local loopback network (`127.0.0.1` / `localhost`).
+- The Web Workbench executes an automated handshake with `/api/auth/handshake` on mount.
+- Requests originating from the local machine are granted immediate local operator access.
+- Ephemeral session tokens are rotated transparently under `.kantha-data/auth_token` without prompting the user.
 
-## Health and release checks
+### 2. Automatic Workspace & Git Discovery
+- The daemon automatically discovers:
+  - Repository name (e.g. `kantha-agent`)
+  - Active Git branch (e.g. `main`, `feat/auth`)
+  - Project file tree and package structure
+- The workbench header immediately displays the active workspace and git status pill:
+  `📁 kantha-agent` • `🌿 main` • `🟢 Local Trust Active`
 
-- `/api/gateway/health/live` checks the HTTP process. `/api/gateway/health/ready` checks access configuration and storage and returns 503 while unavailable. Protected status and usage are rendered in Settings.
-- Run `npm run lint`, `npm run test:gateway`, `npm run build`, then `npm run test:routes` and `npm run test:chat`. The route test starts the production build against isolated temporary SQLite storage and a synthetic loopback provider. It covers transport, scoped access, capacity and slot recovery, provider setup, budget denial, cancellation, event replay and approval recovery across a restart. The chat test covers AI SDK streaming for compatible and native Anthropic fixtures, image input, cancellation, safe errors, the workspace model catalog and upload extraction.
-- Verify the intended deployment separately with a persistent volume, TLS, proxy streaming, an actual provider/model, backup and restore, and monitored startup and shutdown. Protect the database and WAL files as conversation and audit data. Use a SQLite-consistent backup procedure.
-- Future integration work includes the [OpenTelemetry and SigNoz path](../harness/features/OPERATIONS.md), the [shared PostgreSQL deployment profile](../harness/features/PERSISTENCE.md), an OpenWorker Harness adapter and product delegation. The shipped runtime uses application-owned chat and an inert approval tool. Shell, filesystem, MCP and native provider-protocol endpoints are outside this release scope.
+### 3. Automated Model Provider Egress
+- Rather than demanding a "workspace token", Kantha inspects local environment variables and local inference servers:
+  - `ANTHROPIC_API_KEY` (Claude 3.7 Sonnet, Claude 3.5 Sonnet)
+  - `OPENAI_API_KEY` (GPT-4o, o3-mini)
+  - Local Ollama (`http://localhost:11434`) for offline local LLMs
+- Detected providers are surfaced in the Model Selector without blocking the workspace UI.
 
-See [performance profiling and deployment](../PERFORMANCE.md) for measurement, caching, and static asset setup.
+### 4. Self-Healing Daemon Connection
+- If the daemon process is restarting or offline, the UI does **not** fail with an unrecoverable login error.
+- The workbench displays a clean connection health banner with an automated retry loop:
+  `🟡 Connecting to Kantha Local Daemon on :4000... (Auto-reconnecting)`
+- Once the daemon is started with `pnpm dev:daemon`, the UI transitions smoothly to `🟢 Local Trust Active` in real-time.
+
+---
+
+## Configuration (`.env`)
+
+Add model provider keys to `.env` in the root directory (optional if using local Ollama):
+
+```env
+# Optional Cloud Model Provider Keys
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+
+# Daemon Port (defaults to 4000)
+PORT=4000
+
+# Local Data & SQLite Storage Path (defaults to .kantha-data)
+KANTHA_DATA_DIR=.kantha-data
+```
