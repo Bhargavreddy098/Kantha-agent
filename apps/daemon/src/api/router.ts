@@ -479,7 +479,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
         const runner = new EffectHarnessRunner({
           sessionId,
           workspacePath,
-          onEvent: (event) => broadcastEvent(sessionId, event),
+          onEvent: (event: KanthaEvent) => broadcastEvent(sessionId, event),
         });
 
         // Run asynchronously via Effect

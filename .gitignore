@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -21,10 +21,13 @@
 
 # production
 /build
+dist/
+.turbo/
 
 # misc
 .DS_Store
 *.pem
+.gstack/
 
 # debug
 npm-debug.log*
@@ -48,5 +51,7 @@ next-env.d.ts
 /.gateway-browser/
 /.gateway-fixtures/
 /.gateway-data/
+.kantha-data/
+*.token
 
 my-app/
