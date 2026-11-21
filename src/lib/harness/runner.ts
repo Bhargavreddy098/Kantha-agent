@@ -16,14 +16,19 @@ import {
 
 const ACTION_PREFIX = 'action_';
 
-function actionId(runId: string, callId: string): string {
-  return `${ACTION_PREFIX}${runId}_${callId}`;
+/** Proposed v1 run-profile bounds from HARNESS.md; caller overrides never exceed them. */
+const V1_MAX_STEPS = 24;
+const V1_MAX_ELAPSED_MS = 20 * 60_000;
+const V1_MAX_TOOL_OUTPUT_BYTES = 8_192;
+
+function capUtf8(value: string, limit: number): string {
+  if (Buffer.byteLength(value, 'utf8') <= limit) return value;
+  const truncated = Buffer.from(value, 'utf8').subarray(0, limit).toString('utf8');
+  return `${truncated}…[truncated]`;
 }
 
-function chunks(text: string, size = 96): string[] {
-  const result: string[] = [];
-  for (let index = 0; index < text.length; index += size) result.push(text.slice(index, index + size));
-  return result;
+function actionId(runId: string, callId: string): string {
+  return `${ACTION_PREFIX}${runId}_${callId}`;
 }
 
 /**
@@ -43,7 +48,13 @@ export class HarnessRunner {
 
   async execute(submission: HarnessSubmission, runId: string, claim: HarnessClaim, scope: HarnessScope): Promise<HarnessOutcome> {
     const { journal, inference, tools, workspace, verifier, projection } = this.services;
-    const profile = submission.pinned.profile;
+    const requestedProfile = submission.pinned.profile;
+    const profile = {
+      ...requestedProfile,
+      maxSteps: Math.min(requestedProfile.maxSteps, V1_MAX_STEPS),
+      maxElapsedMs: Math.min(requestedProfile.maxElapsedMs, V1_MAX_ELAPSED_MS),
+      maxToolOutputBytes: Math.min(requestedProfile.maxToolOutputBytes, V1_MAX_TOOL_OUTPUT_BYTES),
+    };
     const startedAt = Date.now();
     const checkpoint = this.initialize(runId, submission, claim, scope);
     const signal = projection.signal(runId, scope);
@@ -82,18 +93,40 @@ export class HarnessRunner {
 
         checkpoint.step = step;
         if (response.text) {
-          const messageId = `assistant_${runId}`;
-          for (const delta of chunks(response.text)) {
-            journal.assertClaim(runId, claim.generation, scope);
-            checkpoint.assistantText += delta;
-            await projection.appendAssistantText(runId, messageId, delta, scope);
-            journal.append({ runId, type: 'delta', step, data: { delta } }, claim.generation, scope);
-          }
+          // Adjacent streamed text is batched into one part. The canonical
+          // journal records (assistantMessageId, partId, deltaSequence) so a
+          // reconnect can reconcile deltas without a refetch.
+          const assistantMessageId = `assistant_${runId}`;
+          const partId = `part_${runId}_${step}`;
+          journal.assertClaim(runId, claim.generation, scope);
+          checkpoint.assistantText += response.text;
+          await projection.appendAssistantText(runId, assistantMessageId, response.text, scope);
+          journal.append({
+            runId,
+            type: 'delta',
+            step,
+            data: { delta: response.text, assistantMessageId, partId, deltaSequence: 0 },
+          }, claim.generation, scope);
+          projection.publish('harness.message_delta', runId, {
+            runId, assistantMessageId, partId, deltaSequence: 0, delta: response.text,
+          }, scope);
           history.push(response.text);
         }
 
-        for (const call of response.toolCalls) {
+        // Persist the full ordered call list before dispatching call #1. A
+        // recovery under a fresh claim can settle every sibling exactly once
+        // rather than re-proposing an already-decided batch.
+        checkpoint.plannedCalls = response.toolCalls.map((call) => ({ callId: call.id, name: call.name }));
+        checkpoint.skippedCallIds = checkpoint.skippedCallIds ?? [];
+        journal.append({
+          runId, type: 'tool_batch', step, data: { calls: checkpoint.plannedCalls },
+        }, claim.generation, scope);
+        this.save(checkpoint, claim, scope);
+
+        for (let index = 0; index < response.toolCalls.length; index += 1) {
+          const call = response.toolCalls[index];
           journal.assertClaim(runId, claim.generation, scope);
+          if (checkpoint.skippedCallIds?.includes(call.id)) continue;
           const existing = checkpoint.toolResults[call.id];
           if (existing) {
             history.push(existing.content);
@@ -126,6 +159,8 @@ export class HarnessRunner {
             }
           }
 
+          // Model-facing output is hard-capped regardless of caller profile.
+          result = { ...result, content: capUtf8(result.content, profile.maxToolOutputBytes) };
           checkpoint.completedCallIds.push(call.id);
           checkpoint.toolResults[call.id] = result;
           checkpoint.pendingCallId = undefined;
@@ -134,11 +169,32 @@ export class HarnessRunner {
           this.save(checkpoint, claim, scope);
           history.push(result.content);
 
-          if (result.status === 'denied' || result.status === 'failed') {
+          if (result.status === 'denied' || result.status === 'failed' || result.status === 'uncertain') {
+            // Commit a terminal skipped result for every remaining sibling so
+            // the next model step sees a complete batch, never stale work.
+            for (const sibling of response.toolCalls.slice(index + 1)) {
+              if (checkpoint.toolResults[sibling.id]) continue;
+              const skipped: HarnessToolResult = {
+                callId: sibling.id,
+                actionId: actionId(runId, sibling.id),
+                toolId: sibling.name,
+                version: sibling.version ?? 0,
+                status: 'denied',
+                content: `Skipped: earlier call ${call.id} ${result.status}. No dispatch occurred.`,
+                ui: { label: sibling.name, status: 'error' },
+              };
+              checkpoint.skippedCallIds?.push(sibling.id);
+              checkpoint.toolResults[sibling.id] = skipped;
+              journal.append({
+                runId, type: 'tool_result', step,
+                data: { callId: sibling.id, result: skipped, skipped: true },
+              }, claim.generation, scope);
+            }
+            this.save(checkpoint, claim, scope);
+            if (result.status === 'uncertain') {
+              return this.finalize(submission, checkpoint, claim, scope, { status: 'interrupted', reason: 'Tool outcome could not be reconciled' });
+            }
             return this.finalize(submission, checkpoint, claim, scope, { status: 'failed', reason: result.content });
-          }
-          if (result.status === 'uncertain') {
-            return this.finalize(submission, checkpoint, claim, scope, { status: 'interrupted', reason: 'Tool outcome could not be reconciled' });
           }
         }
 

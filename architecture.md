@@ -7,7 +7,7 @@ Kantha is moving from gateway-backed chat to a coding assistant that can carry o
 | Area | Status in this workspace | Starting point |
 | --- | --- | --- |
 | Gateway | Existing application code for authenticated chat, provider connections, model discovery, usage, sessions, events and an inert approval fixture. Deployment qualification is tracked separately. | [System design](docs/gateway/SYSTEM-DESIGN.md) · [Contracts](docs/gateway/CONTRACTS.md) · [Running and release checks](docs/gateway/RUNNING.md) |
-| Harness | H0–H1 fixture implementation reported. Production inference, repository effects and deployment qualification are planned. | [H0–H1 handoff](docs/harness/HANDOFF-H0-H1.md) · [Feature map](docs/harness/features/README.md) · [Implementation plan](docs/harness/IMPLEMENTATION-PLAN.md) |
+| Harness | H0–H1 fixtures run through the SQLite-backed Gateway composition. The H2 inference adapter and ordered tool continuation have fixture coverage. Live provider qualification, independent hosting and repository effects remain open. | [H0–H1 handoff](docs/harness/HANDOFF-H0-H1.md) · [Feature map](docs/harness/features/README.md) · [Implementation plan](docs/harness/IMPLEMENTATION-PLAN.md) |
 | Orchestrator | Planned after harness release. | [Release sequence](#release-sequence) |
 | Plugins and automations | Planned after orchestrator release. | [Release sequence](#release-sequence) |
 
@@ -15,18 +15,17 @@ Kantha is moving from gateway-backed chat to a coding assistant that can carry o
 
 ```mermaid
 flowchart LR
-    Client[Chat client] --> Gateway[Next.js gateway]
-    Gateway --> Harness[Harness session interface]
-    Harness --> Journal[Conversation journal and checkpoints]
-    Harness --> Inference[Gateway-controlled inference interface]
-    Harness --> Policy[Gateway-owned scope and action decisions]
-    Harness --> Executor[Scoped tool and verification executors]
-    Gateway --> Projection[Authorized snapshots and event feed]
-    Harness --> Projection
-    Projection --> Client
+    Client[Chat client] --> Gateway[Next.js Gateway]
+    Gateway --> Inbox[Durable submissions and control commands]
+    Inbox --> Host[Independent Harness host]
+    Host --> Journal[Runtime journal and checkpoints]
+    Host -->|Inference and action authorization| Gateway
+    Host --> Executor[Isolated tool and verification executor]
+    Journal --> Projection[Gateway projections]
+    Projection -->|Authorized snapshots and session SSE| Client
 ```
 
-Arrows show permitted calls or publication. Gateway composition injects inference, policy, storage and executor interfaces. Keep the harness independent of Next.js route handlers, provider credentials and browser components. Place it in the existing repository initially. Introduce a process boundary when persistent hosting or execution isolation requires one.
+The diagram shows the proposed shared deployment. The fixture starts the runner in the Gateway process after committing the public mapping and input. For shared deployment, the Harness host consumes durable work outside the Gateway request and process lifecycle. Keep the interfaces in this repository and qualify the runtime adapter in H2. The selected runtime owns its loop and journal. Keep Next.js route handlers, provider credentials and browser components on the Gateway side of the boundary.
 
 | Owner | Responsibility | Interface other layers use |
 | --- | --- | --- |
@@ -37,7 +36,7 @@ Arrows show permitted calls or publication. Gateway composition injects inferenc
 
 ### State ownership
 
-The gateway owns the public run ID, submission deduplication and authorization. The harness owns the conversation journal for harness sessions. Existing gateway-only chat retains its app-owned transcript. Publish runtime progress to gateway read models through idempotent checkpoints with stable source event IDs. A browser reconnect observes the existing run. A public-run mapping can exist before execution starts, so the gateway must be able to redeliver the mapped input using the same identity.
+The Gateway owns the public run ID, submission deduplication and authorization. The Harness owns the conversation journal for harness sessions. Existing Gateway-only chat retains its app-owned transcript and AI SDK stream. Commit the public mapping together with a recoverable delivery record. Prefer a PostgreSQL-backed inbox for the shared Kantha profile. When delivery crosses into a runtime-owned store, use the Gateway record as a transactional outbox and obtain a durable admission receipt from that runtime. A broker is an optional transport if the chosen topology needs one. [Sessions and execution](docs/harness/features/SESSIONS.md#durable-delivery)
 
 Treat gateway audit, the harness journal and executor reconciliation as distinct records. A harness checkpoint can prove what the runner recorded. An executor receipt or verified repository state is needed to establish what happened outside the journal. Persist action intent before dispatch and reconcile unknown outcomes before continuing.
 
@@ -45,10 +44,10 @@ The proposed shared deployment uses Neon managed PostgreSQL for transactional st
 
 ### From request to verified outcome
 
-1. The gateway authorizes the request, persists the public run mapping, and hands the harness a scoped submission with pinned run assets.
-2. A fenced session writer claims the input. The harness assembles context and exposes a snapshot of eligible tool definitions. Each physical provider attempt goes through gateway admission and settlement.
-3. The model proposes a complete tool call. The harness validates it, obtains an action decision, persists intent, dispatches through the appropriate executor and records the result before another model step depends on it.
-4. The harness evaluates the task’s acceptance checks and records evidence, unresolved work and cleanup status. The gateway projects the outcome for authorized clients.
+1. The Gateway authorizes the request and commits the mapping and scoped input with pinned assets. The repository-task endpoint returns the public run identity. The independent host can pick up the same input after a lost response or Gateway restart.
+2. One fenced writer per session claims eligible work. The Harness assembles context and exposes eligible tool definitions. The Gateway admits and settles each physical provider attempt.
+3. The Harness checkpoints a pending approval before suspending execution. It resumes on the same action identity and revalidates authority before dispatch. The executor checks the active generation and uses the durable action intent to reconcile an interrupted dispatch.
+4. The Harness binds verification evidence to the final candidate and records cleanup disposition. The Gateway projects committed outcomes and appends session SSE events. The browser can reconstruct the same run from authorized snapshots and replay.
 
 ## Release sequence
 

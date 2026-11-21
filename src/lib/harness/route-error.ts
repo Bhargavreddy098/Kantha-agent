@@ -8,6 +8,7 @@ const codeMap: Record<HarnessError['code'], GatewayErrorCode> = {
   stale_claim: 'conflict',
   invalid_tool_call: 'invalid_request',
   denied: 'forbidden',
+  budget_denied: 'budget_exceeded',
   unresolved: 'conflict',
 };
 

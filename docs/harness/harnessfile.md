@@ -1,3 +1,5 @@
+> **Reference only.** This is an external course note kept for background. It is not an active Kantha contract: ignore its Supabase / Langfuse / OpenWorker notes when implementing harness requirements. The authoritative sources are `docs/harness/HARNESS.md`, `docs/harness/features/*` and `architecture.md`.
+
 Learn Harness Engineering — Complete Course Explanation
 The central idea: A capable AI model is not enough to build reliable software. You need an engineered environment that controls how the agent understands, plans, executes, verifies, and remembers its work.
 

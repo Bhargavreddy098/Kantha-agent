@@ -18,6 +18,7 @@ export type HarnessErrorCode =
   | 'stale_claim'
   | 'invalid_tool_call'
   | 'denied'
+  | 'budget_denied'
   | 'unresolved';
 
 export class HarnessError extends Error {
@@ -92,6 +93,7 @@ export type HarnessJournalEntryType =
   | 'step'
   | 'delta'
   | 'tool_proposed'
+  | 'tool_batch'
   | 'tool_result'
   | 'verification'
   | 'handoff';
@@ -172,6 +174,10 @@ export interface HarnessCheckpoint {
   lastSourceEventId: string;
   pendingCallId?: string;
   pendingActionId?: string;
+  /** Full ordered tool-call list from the current model step, persisted before dispatch. */
+  plannedCalls?: Array<{ callId: string; name: string }>;
+  /** Siblings settled as skipped after an earlier call failed. */
+  skippedCallIds?: string[];
   completedCallIds: string[];
   toolResults: Record<string, HarnessToolResult>;
   assistantText: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -15,6 +15,13 @@ function newInputId(): string {
   return `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Tab-scoped pointer to the last admitted harness run. The gateway projection
+ * stays authoritative; this only lets a reloaded panel reattach to the run it
+ * was already displaying so Stop and the snapshot keep working after reload.
+ */
+const REATTACH_KEY = "kantha:harness:reattach";
+
 function verdictVariant(verdict: string | undefined): "neutral" | "success" | "warning" {
   return verdict === "completed" ? "success" : verdict === "failed" ? "warning" : "neutral";
 }
@@ -26,6 +33,24 @@ export function HarnessRunPanel({ sessionId }: { sessionId?: string }) {
   const lastInput = useRef<HarnessSubmitInput | undefined>(undefined);
   const [scenario, setScenario] = useState<FixtureScenario>("pass");
   const [localError, setLocalError] = useState<string>();
+
+  // Restore the run pointer after a full page reload. A different incoming
+  // session wins, so a different conversation never inherits another run.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(REATTACH_KEY);
+      if (!raw) return;
+      const stored = JSON.parse(raw) as { sessionId?: string; runId?: string };
+      if (!stored.runId) return;
+      if (sessionId && stored.sessionId && sessionId !== stored.sessionId) return;
+      if (!sessionId && stored.sessionId) setActiveSession(stored.sessionId);
+      harness.attach(stored.runId);
+    } catch {
+      // Ignore malformed or unavailable storage; the projection is authoritative.
+    }
+    // Reattach is intentionally a mount-only action.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const buildInput = (inputId: string): HarnessSubmitInput => ({
     inputId,
@@ -49,7 +74,15 @@ export function HarnessRunPanel({ sessionId }: { sessionId?: string }) {
         target = { ...target, sessionId: session.id };
       }
       lastInput.current = target;
-      await harness.start(target);
+      const result = await harness.start(target);
+      try {
+        sessionStorage.setItem(
+          REATTACH_KEY,
+          JSON.stringify({ sessionId: target.sessionId, runId: result.runId })
+        );
+      } catch {
+        // Storage is best-effort; the gateway run remains authoritative.
+      }
     } catch {
       // The hook exposes the gateway error for the status line.
     }

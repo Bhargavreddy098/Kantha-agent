@@ -24,6 +24,7 @@ export type GatewayEventType =
   // state; raw model prompts and tool payloads stay out of the public feed.
   | 'harness.step'
   | 'harness.delta'
+  | 'harness.message_delta'
   | 'harness.tool_proposed'
   | 'harness.tool_result'
   | 'harness.verification'

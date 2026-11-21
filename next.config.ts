@@ -26,6 +26,8 @@ const nextConfig: NextConfig = {
 
   // Development UI
   devIndicators: false,
+  // Allow loopback IP origins (used by local browser E2E runners).
+  allowedDevOrigins: ["127.0.0.1"],
 
   // Build optimization
   experimental: {

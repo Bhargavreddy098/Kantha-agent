@@ -145,6 +145,12 @@ export function useHarnessRun(sessionId: string | undefined) {
     }
   }, [runId, refresh]);
 
+  /** Reattach to a run whose id was restored after a full page reload. */
+  const attach = useCallback((id: string) => {
+    setRunId(id);
+    setError(undefined);
+  }, []);
+
   const recover = useCallback(async () => {
     try {
       const result = await recoverHarnessRuns();
@@ -156,5 +162,5 @@ export function useHarnessRun(sessionId: string | undefined) {
     }
   }, [refresh]);
 
-  return { runId, view, connecting, busy, error, start, stop, recover, refresh };
+  return { runId, view, connecting, busy, error, start, stop, recover, refresh, attach };
 }
