@@ -247,7 +247,6 @@ export const GatewayServiceLive = Layer.effect(
               Effect.flatMap((entry) => ledgerStore.recordTurnUsage(entry)),
               Effect.timeout("2 seconds"),
               Effect.catchAll(() => Effect.void),
-              Effect.forkDaemon,
               Effect.asVoid
             )
           );

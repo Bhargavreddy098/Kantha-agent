@@ -245,6 +245,8 @@ export async function handleChatStreamRequest(
       }
 
       if (context?.gatewayLayer) {
+        let heartbeat: ReturnType<typeof setInterval> | undefined;
+
         const kanthaMessages: KanthaMessage[] = rawMessages.map((msg) => ({
           role:
             msg.role === "assistant" || msg.role === "system" || msg.role === "tool"
@@ -277,7 +279,7 @@ export async function handleChatStreamRequest(
             }
             res.write(": connected\n\n");
 
-            const heartbeat = setInterval(() => {
+            heartbeat = setInterval(() => {
               if (!res.writableEnded) {
                 res.write(": ping\n\n");
               }
@@ -304,7 +306,10 @@ export async function handleChatStreamRequest(
                 res.write(formatSseEvent("[DONE]"));
               }
             } finally {
-              clearInterval(heartbeat);
+              if (heartbeat) {
+                clearInterval(heartbeat);
+                heartbeat = undefined;
+              }
             }
           })
         ).pipe(
@@ -328,6 +333,10 @@ export async function handleChatStreamRequest(
           ),
           Effect.ensuring(
             Effect.sync(() => {
+              if (heartbeat) {
+                clearInterval(heartbeat);
+                heartbeat = undefined;
+              }
               if (!res.writableEnded) {
                 res.end();
               }
@@ -339,6 +348,10 @@ export async function handleChatStreamRequest(
 
         // Disconnect detection: Attach to res.on("close") guarded by !res.writableEnded
         res.on("close", () => {
+          if (heartbeat) {
+            clearInterval(heartbeat);
+            heartbeat = undefined;
+          }
           if (!res.writableEnded) {
             Effect.runFork(Fiber.interrupt(fiber));
           }
