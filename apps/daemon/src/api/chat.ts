@@ -22,13 +22,32 @@ const MAX_DOCUMENT_CHAR_LENGTH = 30_000;
 export function sanitizeMessagesForUpstream(
   messages: ChatMessagePayload[]
 ): Array<{ role: string; content: string | Array<any> }> {
-  return messages.map((msg) => {
+  // Apply 20-message sliding window to stay safely within token quotas
+  const windowed = messages.slice(-20);
+
+  return windowed.map((msg) => {
     let content = msg.content;
 
     if (typeof content === "string" && content.length > MAX_DOCUMENT_CHAR_LENGTH) {
       content =
         content.slice(0, MAX_DOCUMENT_CHAR_LENGTH) +
         `\n\n[Document truncated to first ${MAX_DOCUMENT_CHAR_LENGTH.toLocaleString()} characters]`;
+    } else if (Array.isArray(content)) {
+      content = content.map((part) => {
+        if (
+          part.type === "text" &&
+          typeof part.text === "string" &&
+          part.text.length > MAX_DOCUMENT_CHAR_LENGTH
+        ) {
+          return {
+            ...part,
+            text:
+              part.text.slice(0, MAX_DOCUMENT_CHAR_LENGTH) +
+              `\n\n[Document truncated to first ${MAX_DOCUMENT_CHAR_LENGTH.toLocaleString()} characters]`,
+          };
+        }
+        return part;
+      });
     }
 
     return {

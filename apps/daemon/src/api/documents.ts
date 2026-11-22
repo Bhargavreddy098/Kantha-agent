@@ -117,6 +117,7 @@ export async function handleDocumentExtractRequest(
   });
 
   req.on("end", async () => {
+    if (res.headersSent) return;
     try {
       const contentType = req.headers["content-type"] || "";
 

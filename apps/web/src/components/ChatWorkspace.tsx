@@ -8,6 +8,7 @@ import {
   useConversations,
   useMessages,
   createConversation,
+  renameConversation,
   saveMessage,
   updateMessage,
   generateConversationTitle,
@@ -35,9 +36,10 @@ export const ChatWorkspace: React.FC = () => {
     document.documentElement.setAttribute("data-theme", themeMode);
   }, [themeMode]);
 
-  // Discover daemon providers / status
+  // Establish ADR-007 session handshake and discover daemon providers
   useEffect(() => {
-    fetch("/api/providers")
+    fetch("/api/auth/handshake")
+      .then(() => fetch("/api/providers"))
       .then((res) => {
         if (!res.ok) throw new Error("Offline");
         return res.json();
@@ -48,16 +50,19 @@ export const ChatWorkspace: React.FC = () => {
         setModelStatus(`Connected: ${model}`);
       })
       .catch(() => {
-        // Fallback for standalone / disconnected mode
-        setIsOnline(true);
+        setIsOnline(false);
         setModelStatus("Ready: Local Model Engine");
       });
   }, []);
 
-  // Default to most recent conversation if available and none selected
+  // Sync active conversation with list to prevent orphaned zombie states
   useEffect(() => {
-    if (!activeConversationId && conversations.length > 0) {
-      setActiveConversationId(conversations[0].id);
+    if (conversations.length > 0) {
+      if (!activeConversationId || !conversations.some((c) => c.id === activeConversationId)) {
+        setActiveConversationId(conversations[0].id);
+      }
+    } else {
+      setActiveConversationId(null);
     }
   }, [conversations, activeConversationId]);
 
@@ -85,7 +90,6 @@ export const ChatWorkspace: React.FC = () => {
       // If current conversation has no messages yet, update title to match first prompt
       if (messages.length === 0) {
         const generatedTitle = generateConversationTitle(text || attachments[0]?.name || "New Chat");
-        const { renameConversation } = await import("../db/useChatHistory");
         await renameConversation(convId, generatedTitle);
       }
     }

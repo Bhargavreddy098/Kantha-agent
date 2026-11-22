@@ -54,14 +54,14 @@ export function readImageAsDataUrl(file: File): Promise<string> {
 export async function extractDocumentText(
   file: File
 ): Promise<{ filename: string; extractedText: string; charCount: number }> {
-  // Read file as ArrayBuffer and convert to base64
-  const arrayBuffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  const dataBase64 = btoa(binary);
+  // Read file as Data URL off-thread and extract base64 payload
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+  const dataBase64 = dataUrl.split(",")[1] || "";
 
   const response = await fetch("/api/documents/extract", {
     method: "POST",

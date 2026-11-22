@@ -35,6 +35,36 @@ describe("Chat SSE Streaming Service", () => {
       assert.ok(content.length < 35000);
       assert.ok(content.includes("[Document truncated"));
     });
+
+    it("should truncate oversized text in multimodal array content", () => {
+      const longText = "B".repeat(35000);
+      const messages = [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `Multimodal document text:\n${longText}` },
+            { type: "image_url", image_url: { url: "data:image/png;base64,abc" } },
+          ],
+        },
+      ];
+
+      const sanitized = sanitizeMessagesForUpstream(messages);
+      const parts = sanitized[0].content as Array<any>;
+      assert.ok(parts[0].text.length < 35000);
+      assert.ok(parts[0].text.includes("[Document truncated"));
+    });
+
+    it("should limit messages to last 20 messages sliding window", () => {
+      const messages = Array.from({ length: 30 }, (_, i) => ({
+        role: i % 2 === 0 ? "user" : "assistant",
+        content: `Message ${i + 1}`,
+      }));
+
+      const sanitized = sanitizeMessagesForUpstream(messages);
+      assert.equal(sanitized.length, 20);
+      assert.equal(sanitized[0].content, "Message 11");
+      assert.equal(sanitized[19].content, "Message 30");
+    });
   });
 
   describe("parseOpenAiDelta", () => {

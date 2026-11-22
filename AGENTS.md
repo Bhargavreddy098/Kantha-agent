@@ -51,12 +51,7 @@ Kantha development must adhere to the principles outlined in our core engineerin
   - All acceptance criteria in the task file are satisfied.
   - Handoff document is written and committed.
 
-### 4. Mandatory Frontend Reuse Policy
-- Before modifying the frontend, read [the UI/UX plan and component reuse rules](docs/frontend/README.md).
-- Import components through public subpaths of `@astryxdesign/core`. Use `src/ui` as a reference.
-- If Astryx lacks a required capability, document the gap and request user approval before introducing local components or new dependencies.
-
-### 5. Architectural Ownership & Invariants
+### 4. Architectural Ownership & Invariants
 - **Daemon owns authority & execution:** Credentials, workspace grants, repository access, budget accounting, conversation journal, step loop, checkpointing, and verification live in the Bun Daemon process (`apps/daemon`).
 - **Clients are presentation and control planes:** The Web Workbench (`apps/web`) and Terminal CLI (`apps/cli`) observe and submit actions over local HTTP, SSE, and WebSockets.
 - **Durable intent before dispatch:** Every mutating tool action must persist intent (`action_${runId}_${callId}`) before execution to enable safe interruption recovery.
