@@ -61,8 +61,8 @@ export class IngressFencing {
     }
 
     if (this.devOriginAllowed) {
-      // Explicitly configured development hosts and origins (Vite dev servers on port 3000-3010, 5173-5180, 4173)
-      const devPorts = [3000, 3001, 3002, 5173, 5174, 5175, 5176, 4173];
+      // Explicitly configured frontend development hosts and origins (Vite dev server on port 3000, preview on 5173)
+      const devPorts = [3000, 5173];
       for (const p of devPorts) {
         this.allowedHosts.add(`127.0.0.1:${p}`);
         this.allowedHosts.add(`localhost:${p}`);
@@ -82,32 +82,12 @@ export class IngressFencing {
     }
 
     const normalized = hostHeader.trim().toLowerCase();
-    if (this.allowedHosts.has(normalized)) {
-      return true;
-    }
-
-    if (this.devOriginAllowed) {
-      try {
-        let host = normalized;
-        if (normalized.startsWith("[") && normalized.includes("]")) {
-          host = normalized.substring(0, normalized.indexOf("]") + 1);
-        } else if (normalized.includes(":")) {
-          host = normalized.split(":")[0];
-        }
-        const isLoopback = host === "127.0.0.1" || host === "localhost" || host === "[::1]";
-        if (isLoopback) {
-          return true;
-        }
-      } catch {}
-    }
-
-    return false;
+    return this.allowedHosts.has(normalized);
   }
 
   /**
    * Validates Origin header for browser requests and WebSocket upgrades.
-   * In production, origin must be in the allowedOrigins set.
-   * In development, any loopback origin (e.g. localhost, 127.0.0.1, [::1] on any port) is allowed.
+   * Enforces exact match against allowedOrigins allowlist.
    */
   isOriginValid(originHeader: string | undefined): boolean {
     if (!originHeader || typeof originHeader !== "string") {
@@ -115,27 +95,10 @@ export class IngressFencing {
     }
 
     const normalized = originHeader.trim().toLowerCase();
-    if (this.allowedOrigins.has(normalized)) {
-      return true;
-    }
-
-    if (this.devOriginAllowed) {
-      try {
-        const parsed = new URL(normalized);
-        const isLoopback =
-          parsed.hostname === "127.0.0.1" ||
-          parsed.hostname === "localhost" ||
-          parsed.hostname === "[::1]";
-        if (isLoopback && (parsed.protocol === "http:" || parsed.protocol === "https:")) {
-          return true;
-        }
-      } catch {
-        // malformed origin URL
-      }
-    }
-
-    return false;
+    return this.allowedOrigins.has(normalized);
   }
+
+
 
   /**
    * Validates Sec-Fetch-Site header (Defense in Depth).
@@ -150,7 +113,6 @@ export class IngressFencing {
   }
 
   /**
-   * Extracts kantha_session_<port> cookie from Cookie header.
    */
   extractSessionCookie(cookieHeader: string | undefined): string | null {
     if (!cookieHeader || typeof cookieHeader !== "string") {

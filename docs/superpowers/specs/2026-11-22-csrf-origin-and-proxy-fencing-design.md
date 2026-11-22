@@ -1,153 +1,138 @@
-# Design Document: CSRF Origin Fallback & Dev Proxy Fencing Resolution
+# Revised Design: Secure CSRF Source-Origin Validation & Dev Proxy Compatibility
 
 **Date:** 2026-11-22  
-**Status:** Pending Approval  
-**Target:** `apps/daemon`, `apps/web`  
+**Status:** Pending User Approval  
+**Scope:** `apps/daemon`, `apps/web`  
 
 ---
 
-## 1. Intent and Why
+## 1. Intent and Root Cause Analysis
 
-When configuring custom model providers or testing connections in the Kantha Settings modal, the browser issues a `POST` request to `http://127.0.0.1:3000/api/providers/discover` (proxied via Vite on port 3000 to the Bun/Node daemon on port 4000). The request currently fails with:
+### 1.1 The Issue
+When testing connection or discovering models in the Kantha Settings modal, requests to `POST http://127.0.0.1:3000/api/providers/discover` and `POST http://127.0.0.1:3000/api/providers/test` fail with `403 Forbidden` (`Forbidden: Unauthorized Origin` or `Forbidden: Unauthorized or missing Origin`).
 
-```text
-Request URL: http://127.0.0.1:3000/api/providers/discover
-Request Method: POST
-Status Code: 403 Forbidden
-```
-
-### Root Cause
-1. **Omitted `Origin` Header on Same-Origin Requests:** Modern browser engines (Chromium, Firefox, Safari) often omit the `Origin` header on same-origin `POST` requests, sending only `Referer: http://127.0.0.1:3000/` and `Sec-Fetch-Site: same-origin`. In [`apps/daemon/src/api/router.ts`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/src/api/router.ts), line 377 strictly enforces `if (!origin || !fencing.isOriginValid(origin))`. If `origin` is omitted by the browser/proxy, the request is unconditionally rejected with `403 Forbidden`.
-2. **`Sec-Fetch-Site: cross-site` with `localhost` vs `127.0.0.1`:** If a developer opens `http://localhost:3000` while Vite proxies or connects to `127.0.0.1`, browsers classify the request as `cross-site`. Line 177 (`isFetchSiteValid`) rejected this prior to origin evaluation.
-3. **Vite Proxy Origin Passthrough:** The Vite dev proxy in [`apps/web/vite.config.ts`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/web/vite.config.ts) was not synthesizing or preserving the `Origin` header when forwarding upstream.
-4. **Daemon Hot-Reloading:** The daemon dev command in [`apps/daemon/package.json`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/package.json) used `tsx src/index.ts` instead of `tsx watch src/index.ts`, preventing code changes from reloading without manual process restarts.
-
----
-
-## 2. Goals, Non-Goals, and Anti-Goals
-
-### Goals
-- Resolve effective origin reliably from `Origin`, falling back to `Referer` or `Host` when `Sec-Fetch-Site` is `same-origin`.
-- Tolerate browser-classified `Sec-Fetch-Site: cross-site` requests in development mode when the origin is a verified loopback address (`localhost`, `127.0.0.1`, `[::1]`).
-- Ensure Vite dev proxy injects/preserves the client `Origin` header when forwarding `/api` calls upstream.
-- Update `apps/daemon/package.json` to `"dev": "tsx watch src/index.ts"`.
-- Maintain strict fail-closed ADR-007 protection: non-loopback external domains (e.g. `https://malicious.com`) remain strictly blocked with `403`.
-
-### Non-Goals
-- Exposing the daemon to external public networks.
-- Removing CSRF or origin fencing checks entirely.
-- Changing authentication mechanics (session cookies and CLI tokens remain standard).
-
-### Anti-Goals
-- Weakening security by removing origin verification from state-changing endpoints.
-- Introducing third-party CORS middleware packages.
-- Breaking existing SSE streaming or document extraction endpoints.
+### 1.2 Inspection of Request & Validation Mechanics
+1. **Frontend Request Path:** The browser SPA runs on Vite (defaulting to port 3000 at `http://127.0.0.1:3000` or `http://localhost:3000`). Requests to `/api/*` are reverse-proxied by Vite to the Bun/Node daemon at `http://127.0.0.1:4000`.
+2. **Origin & Referer Headers:**
+   - On `POST` fetch requests, browsers send `Origin: http://127.0.0.1:3000` (or `http://localhost:3000`) along with `Referer: http://127.0.0.1:3000/`.
+   - In some browser/proxy configurations, `Origin` may be absent while `Referer` is present.
+3. **Daemon Origin Fencing (`IngressFencing`):**
+   - The daemon maintains `allowedOrigins` and `allowedHosts`.
+   - In `apps/daemon/src/index.ts`, `devOriginAllowed: true` was not consistently propagated, causing `allowedOrigins` to contain only the daemon's own port (e.g. `http://127.0.0.1:4000`), immediately rejecting Vite frontend requests from port 3000 with `403 Forbidden: Unauthorized Origin`.
+   - In `apps/daemon/src/api/router.ts` line 377, `if (!origin || !fencing.isOriginValid(origin))` unconditionally rejected state-changing requests if `req.headers.origin` was absent, ignoring a valid `Referer`.
+4. **Daemon Watch Mode:** `apps/daemon/package.json` ran `tsx src/index.ts` without `--watch`, meaning in-memory daemons did not reload when fixes were saved.
 
 ---
 
-## 3. Constraints
-- Must pass all 18+ ADR-007 security tests in `apps/daemon/src/api/auth/__tests__/security.test.ts`.
-- Zero disruption to existing Astryx chat components or Bun/Effect daemon services.
-- Adhere to the ADR-007 local pairing model.
+## 2. Security Principles & Non-Negotiable Requirements
+
+Per user requirements, we **do not implement broad security exemptions or blanket loopback trust**:
+1. **Explicit Exact-Origin Allowlist Only:** No wildcard loopback checks (e.g. `isLoopback` accepting any arbitrary port on `127.0.0.1`). Only configured origins (`http://127.0.0.1:3000`, `http://localhost:3000`, `http://127.0.0.1:5173`, `http://localhost:5173`, daemon port, and `KANTHA_ALLOWED_ORIGINS`) are permitted.
+2. **Secure Source-Origin Resolution:** Prefer `req.headers.origin`. If absent, securely parse `new URL(req.headers.referer).origin`. Validate against the explicit allowlist.
+3. **No Unvalidated Origin Synthesis:** Never use `Host` or `Sec-Fetch-Site: none` to establish or invent a trusted origin. Never synthesize `Origin` in Vite from unvalidated client Host headers.
+4. **Strict Cross-Site Blocking:** Reject `Sec-Fetch-Site: cross-site` on state-changing requests by default. Untrusted cross-site pages cannot trigger state mutations.
+5. **Separate CORS from CSRF:** Only reflect an actual, valid `req.headers.origin` in `Access-Control-Allow-Origin`. Never reflect Referer into CORS headers.
+6. **Preserve Authentication:** Maintain ADR-007 session cookie verification, CLI timing-safe token verification, and fail-closed behavior.
 
 ---
 
-## 4. Approaches
+## 3. Concrete Implementation Plan
 
-### Approach A: Multi-Layer CSRF & Proxy Origin Resolution (Chosen)
-- **Mechanism:**
-  1. **Effective Origin Fallback:** In `router.ts`, extract origin from `req.headers.origin`. If absent, extract origin from `req.headers.referer`. If still absent and `Sec-Fetch-Site === "same-origin"`, use `http://${req.headers.host}`. Validate the resulting origin using `fencing.isOriginValid(effectiveOrigin)`.
-  2. **Loopback Dev Exemption for `Sec-Fetch-Site`:** In `fencing.ts`, allow `Sec-Fetch-Site: cross-site` if `devOriginAllowed` is true and the origin is verified loopback.
-  3. **Vite Proxy Forwarding:** In `vite.config.ts`, configure `proxy.on('proxyReq')` to inject `origin` from the client request.
-  4. **Watch Mode:** Update `apps/daemon/package.json` to `tsx watch src/index.ts`.
-- **Pros:** Comprehensive, resilient against all browser quirks, preserves full defense-in-depth security.
-- **Cons:** Touches 4 files (`router.ts`, `fencing.ts`, `vite.config.ts`, `package.json`).
+### 3.1 Strict Ingress Fencing ([`apps/daemon/src/api/auth/fencing.ts`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/src/api/auth/fencing.ts))
+- Revert broad loopback matching.
+- Populate `allowedOrigins` and `allowedHosts` with:
+  - Daemon port: `127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`
+  - When `devOriginAllowed: true`: Configured frontend dev ports `[3000, 3001, 3002, 5173, 5174, 5175, 4173]` for both `127.0.0.1` and `localhost`.
+  - Any explicit origins from options or `process.env.KANTHA_ALLOWED_ORIGINS`.
+- `isHostValid(host)`: Strict exact match in `this.allowedHosts`.
+- `isOriginValid(origin)`: Strict exact match in `this.allowedOrigins`.
+- `isFetchSiteValid(secFetchSite)`: Permits `same-origin`, `same-site`, `none`, or undefined. Rejects `cross-site`.
 
-### Approach B: Exclude `/api/providers/*` from Origin Fencing (Rejected)
-- **Mechanism:** Exempt the provider endpoints from the state-changing origin check.
-- **Why Rejected:** Violates ADR-007 CSRF protection principles and leaves other POST/PUT/DELETE endpoints vulnerable to the exact same failure when accessed across loopback variations.
+### 3.2 Secure Source-Origin & CORS Separation ([`apps/daemon/src/api/router.ts`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/src/api/router.ts))
+1. **CORS Handling (Lines 184-197):**
+   ```typescript
+   const reqOrigin = req.headers.origin;
+   if (typeof reqOrigin === "string") {
+     if (fencing.isOriginValid(reqOrigin)) {
+       res.setHeader("Access-Control-Allow-Origin", reqOrigin);
+       res.setHeader("Access-Control-Allow-Credentials", "true");
+       res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Kantha-CLI-Token");
+     } else {
+       res.writeHead(403, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ error: "Forbidden: Unauthorized Origin" }));
+       return;
+     }
+   }
+   ```
+2. **CSRF State-Changing Verification (Line 373):**
+   ```typescript
+   if ((req.method === "POST" || req.method === "PUT" || req.method === "DELETE") && !isCli) {
+     let sourceOrigin: string | undefined;
+     if (typeof req.headers.origin === "string" && req.headers.origin.trim()) {
+       sourceOrigin = req.headers.origin.trim();
+     } else if (typeof req.headers.referer === "string" && req.headers.referer.trim()) {
+       try {
+         sourceOrigin = new URL(req.headers.referer).origin;
+       } catch {}
+     }
 
----
+     if (!sourceOrigin || !fencing.isOriginValid(sourceOrigin)) {
+       res.writeHead(403, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ error: "Forbidden: Unauthorized or missing Origin" }));
+       return;
+     }
 
-## 5. Detailed Design Specifications
+     // Origin & Referer mismatch defense: if both are sent, both must be valid
+     if (req.headers.origin && req.headers.referer) {
+       try {
+         const refOrigin = new URL(req.headers.referer).origin;
+         if (!fencing.isOriginValid(refOrigin)) {
+           res.writeHead(403, { "Content-Type": "application/json" });
+           res.end(JSON.stringify({ error: "Forbidden: Invalid Referer origin" }));
+           return;
+         }
+       } catch {
+         res.writeHead(403, { "Content-Type": "application/json" });
+         res.end(JSON.stringify({ error: "Forbidden: Malformed Referer header" }));
+         return;
+       }
+     }
+   }
+   ```
 
-### 5.1 Daemon Effective Origin Resolution ([`apps/daemon/src/api/router.ts`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/src/api/router.ts))
-Replace naive `const origin = req.headers.origin;` with:
-```typescript
-const resolveEffectiveOrigin = (req: http.IncomingMessage): string | undefined => {
-  if (typeof req.headers.origin === "string" && req.headers.origin.trim()) {
-    return req.headers.origin.trim();
-  }
-  if (typeof req.headers.referer === "string" && req.headers.referer.trim()) {
-    try {
-      const parsed = new URL(req.headers.referer);
-      return parsed.origin;
-    } catch {}
-  }
-  const secFetchSite = req.headers["sec-fetch-site"];
-  if ((secFetchSite === "same-origin" || secFetchSite === "none") && req.headers.host) {
-    return `http://${req.headers.host}`;
-  }
-  return undefined;
-};
-```
-Use `const origin = resolveEffectiveOrigin(req);` for CORS header setting and state-changing request fencing.
-
-### 5.2 Sec-Fetch-Site Loopback Relaxation ([`apps/daemon/src/api/auth/fencing.ts`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/src/api/auth/fencing.ts))
-Update `isFetchSiteValid`:
-```typescript
-isFetchSiteValid(secFetchSite: string | undefined, origin?: string): boolean {
-  if (!secFetchSite) {
-    return true;
-  }
-  const normalized = secFetchSite.trim().toLowerCase();
-  if (normalized === "same-origin" || normalized === "same-site" || normalized === "none") {
-    return true;
-  }
-  if (this.devOriginAllowed && origin && this.isOriginValid(origin)) {
-    return true;
-  }
-  return false;
-}
-```
-
-### 5.3 Vite Dev Proxy Origin Forwarding ([`apps/web/vite.config.ts`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/web/vite.config.ts))
-In `server.proxy["/api"]`:
-```typescript
-proxy: {
-  "/api": {
-    target: DAEMON_TARGET,
-    changeOrigin: true,
-    secure: false,
-    configure: (proxy) => {
-      proxy.on("proxyReq", (proxyReq, req) => {
-        const clientOrigin = req.headers.origin || (req.headers.host ? `http://${req.headers.host}` : undefined);
-        if (clientOrigin && !proxyReq.getHeader("origin")) {
-          proxyReq.setHeader("origin", clientOrigin);
-        }
-      });
-    },
-  },
-}
-```
-
-### 5.4 Daemon Watch Mode ([`apps/daemon/package.json`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/package.json))
-Update:
+### 3.3 Daemon Watch Mode ([`apps/daemon/package.json`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/package.json))
+Change script to:
 ```json
-"scripts": {
-  "dev": "tsx watch src/index.ts",
-  ...
-}
+"dev": "tsx watch src/index.ts"
 ```
+
+### 3.4 Verification of Provider Logic & Upstream Error Handling
+- `/api/providers/test`: Calls `providerRegistry.testConnection(payload)`. Returns `{ success, latencyMs, status, error }` with HTTP 200 (or 500 on unexpected exception).
+- `/api/providers/discover`: Calls `providerRegistry.discoverModels(payload)`. Returns `{ models: [...] }` with HTTP 200 (or `{ models: [], error }` on upstream error).
 
 ---
 
-## 6. What's Left to the Builder
-1. Implement the changes in `router.ts`, `fencing.ts`, `vite.config.ts`, and `package.json`.
-2. Add regression tests in `apps/daemon/src/api/auth/__tests__/security.test.ts` verifying:
-   - State-changing `POST` with missing `Origin` but valid `Referer` succeeds.
-   - State-changing `POST` with missing `Origin` and `Sec-Fetch-Site: same-origin` succeeds.
-   - State-changing `POST` with `Sec-Fetch-Site: cross-site` between loopback hosts in dev mode succeeds.
-   - External origins (e.g. `https://attacker.com`) remain blocked with 403.
-3. Verify test suite, typechecks, and web build.
-4. Commit and push changes.
+## 4. Comprehensive Regression Test Matrix
+
+Add to [`apps/daemon/src/api/auth/__tests__/security.test.ts`](file:///C:/Users/bharg/OneDrive/Desktop/kantha-agent/apps/daemon/src/api/auth/__tests__/security.test.ts):
+1. **Valid Origin on Configured Frontend Ports:** `POST /api/providers/discover` and `/api/providers/test` with `Origin: http://127.0.0.1:3000` and `http://localhost:3000` $\rightarrow$ `200 OK`.
+2. **Valid Referer Fallback:** `POST /api/providers/discover` with no `Origin` but `Referer: http://127.0.0.1:3000/settings` $\rightarrow$ `200 OK`.
+3. **Missing Both Origin & Referer on State-Changing Request:** `POST /api/providers/discover` with neither header $\rightarrow$ `403 Forbidden`.
+4. **Origin `null`:** `Origin: null` or `"null"` string $\rightarrow$ `403 Forbidden`.
+5. **Mismatched Hostile Referer:** Valid `Origin: http://127.0.0.1:3000` with hostile `Referer: https://attacker.com/page` $\rightarrow$ `403 Forbidden`.
+6. **Hostile Host Header:** Request with `Host: evil.attacker.com` $\rightarrow$ `403 Forbidden`.
+7. **Cross-Site Request:** Request with `Sec-Fetch-Site: cross-site` $\rightarrow$ `403 Forbidden`.
+8. **Both Localhost Variants:** Both `http://127.0.0.1:3000` and `http://localhost:3000` pass when configured.
+9. **CORS Separation:** Valid Referer fallback does NOT set `Access-Control-Allow-Origin: undefined` or leak Referer.
+10. **Provider Logic & Error Handling:** Successful provider execution verifies mock upstream endpoint behavior.
+
+---
+
+## 5. Verification Gate Before Commit
+
+1. Run `npx tsx --test apps/daemon/src/api/auth/__tests__/security.test.ts` (all security tests pass).
+2. Run `npx tsx --test apps/daemon/src/services/__tests__/providerRegistry.test.ts` and `apps/daemon/src/api/__tests__/chat.test.ts`.
+3. Run `pnpm -r typecheck` and `pnpm --filter @kantha/web build`.
+4. Verify Discover Models and Test Connection manually in the browser.
+5. Zero commits or pushes until all verification steps pass cleanly.

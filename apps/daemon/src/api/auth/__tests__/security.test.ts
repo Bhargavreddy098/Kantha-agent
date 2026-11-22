@@ -495,8 +495,13 @@ describe("ADR-007 Mandatory Security Verification Suite", () => {
     assert.ok(setCookie.includes("Secure"), "Cookie must include Secure attribute when operating under HTTPS");
   });
 
-  it("Regression: Arbitrary development loopback Origin (e.g. 127.0.0.1:3003, localhost:8080) is accepted in dev mode", async () => {
-    for (const testOrigin of ["http://127.0.0.1:3003", "http://localhost:8080", "http://[::1]:5179"]) {
+  it("Requirement: Configured frontend dev origins (3000 and 5173 on 127.0.0.1 and localhost) are accepted", async () => {
+    for (const testOrigin of [
+      "http://127.0.0.1:3000",
+      "http://localhost:3000",
+      "http://127.0.0.1:5173",
+      "http://localhost:5173",
+    ]) {
       const devPairRes = await makeRequest("/api/auth/pair", {
         method: "POST",
         headers: {
@@ -512,6 +517,178 @@ describe("ADR-007 Mandatory Security Verification Suite", () => {
         `CORS header must echo permitted dev origin ${testOrigin}`
       );
     }
+  });
+
+  it("Requirement: Unconfigured loopback ports (e.g. 127.0.0.1:9999, localhost:8080) are rejected (no broad wildcard trust)", async () => {
+    for (const unconfiguredOrigin of ["http://127.0.0.1:9999", "http://localhost:8080"]) {
+      const res = await makeRequest("/api/auth/pair", {
+        method: "POST",
+        headers: {
+          Origin: unconfiguredOrigin,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ticket: daemon.ticketRegistry.createTicket() }),
+      });
+      assert.strictEqual(res.status, 403, `Unconfigured port ${unconfiguredOrigin} must be rejected with 403`);
+    }
+  });
+
+  it("Requirement: State-changing POST with missing Origin falls back to valid Referer without leaking CORS header", async () => {
+    const ticket = daemon.ticketRegistry.createTicket();
+    const pairRes = await makeRequest("/api/auth/pair", {
+      method: "POST",
+      headers: {
+        Origin: "http://127.0.0.1:3000",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ticket }),
+    });
+    const cookieHeader = pairRes.headers["set-cookie"]![0].split(";")[0];
+
+    // State-changing request with NO Origin header, but valid Referer
+    const res = await makeRequest("/api/providers/default", {
+      method: "POST",
+      headers: {
+        Cookie: cookieHeader,
+        Referer: "http://127.0.0.1:3000/settings",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ modelId: "openai:gpt-4o" }),
+    });
+    assert.strictEqual(res.status, 200, "Valid Referer fallback must pass CSRF check with 200");
+    assert.strictEqual(
+      res.headers["access-control-allow-origin"],
+      undefined,
+      "CORS header must NOT reflect Referer as Origin"
+    );
+  });
+
+  it("Requirement: State-changing POST with missing both Origin and Referer is rejected with 403", async () => {
+    const ticket = daemon.ticketRegistry.createTicket();
+    const pairRes = await makeRequest("/api/auth/pair", {
+      method: "POST",
+      headers: { Origin: "http://127.0.0.1:3000", "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket }),
+    });
+    const cookieHeader = pairRes.headers["set-cookie"]![0].split(";")[0];
+
+    const res = await makeRequest("/api/providers/default", {
+      method: "POST",
+      headers: {
+        Cookie: cookieHeader,
+        // Neither Origin nor Referer provided
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ modelId: "openai:gpt-4o" }),
+    });
+    assert.strictEqual(res.status, 403, "Missing both Origin and Referer must return 403 Forbidden");
+    const body = JSON.parse(res.body);
+    assert.match(body.error, /Unauthorized or missing Origin/);
+  });
+
+  it("Requirement: State-changing POST with Origin 'null' is rejected with 403", async () => {
+    const ticket = daemon.ticketRegistry.createTicket();
+    const pairRes = await makeRequest("/api/auth/pair", {
+      method: "POST",
+      headers: { Origin: "http://127.0.0.1:3000", "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket }),
+    });
+    const cookieHeader = pairRes.headers["set-cookie"]![0].split(";")[0];
+
+    const res = await makeRequest("/api/providers/default", {
+      method: "POST",
+      headers: {
+        Cookie: cookieHeader,
+        Origin: "null",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ modelId: "openai:gpt-4o" }),
+    });
+    assert.strictEqual(res.status, 403, "Origin 'null' must return 403 Forbidden");
+  });
+
+  it("Requirement: Mismatched Origin and Referer directly fails closed with 403", async () => {
+    const ticket = daemon.ticketRegistry.createTicket();
+    const pairRes = await makeRequest("/api/auth/pair", {
+      method: "POST",
+      headers: { Origin: "http://127.0.0.1:3000", "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket }),
+    });
+    const cookieHeader = pairRes.headers["set-cookie"]![0].split(";")[0];
+
+    // Case A: Valid Origin with hostile external Referer
+    const resExternal = await makeRequest("/api/providers/default", {
+      method: "POST",
+      headers: {
+        Cookie: cookieHeader,
+        Origin: "http://127.0.0.1:3000",
+        Referer: "https://evil-attacker.com/exploit",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ modelId: "openai:gpt-4o" }),
+    });
+    assert.strictEqual(resExternal.status, 403, "Hostile Referer mismatch must return 403");
+    assert.match(JSON.parse(resExternal.body).error, /Origin and Referer mismatch/);
+
+    // Case B: Both are local origins but differ from each other (127.0.0.1 vs localhost)
+    const resLocalMismatch = await makeRequest("/api/providers/default", {
+      method: "POST",
+      headers: {
+        Cookie: cookieHeader,
+        Origin: "http://127.0.0.1:3000",
+        Referer: "http://localhost:3000/settings",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ modelId: "openai:gpt-4o" }),
+    });
+    assert.strictEqual(resLocalMismatch.status, 403, "Local origins mismatch must directly return 403");
+    assert.match(JSON.parse(resLocalMismatch.body).error, /Origin and Referer mismatch/);
+  });
+
+  it("Requirement: Provider Discover and Test endpoints pass CSRF authorization and execute provider logic", async () => {
+    const ticket = daemon.ticketRegistry.createTicket();
+    const pairRes = await makeRequest("/api/auth/pair", {
+      method: "POST",
+      headers: { Origin: "http://127.0.0.1:3000", "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket }),
+    });
+    const cookieHeader = pairRes.headers["set-cookie"]![0].split(";")[0];
+
+    // Test Connection endpoint: authorized request reaches providerRegistry.testConnection
+    const testRes = await makeRequest("/api/providers/test", {
+      method: "POST",
+      headers: {
+        Cookie: cookieHeader,
+        Origin: "http://127.0.0.1:3000",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        baseURL: "http://127.0.0.1:59999", // unreachable test port
+        type: "openai_compatible",
+      }),
+    });
+    // Status must be 200 with structured test result indicating host unreachable (NOT 401 or 403)
+    assert.strictEqual(testRes.status, 200, "/api/providers/test must pass authorization and return 200");
+    const testData = JSON.parse(testRes.body);
+    assert.strictEqual(typeof testData.success, "boolean");
+    assert.strictEqual(typeof testData.latencyMs, "number");
+
+    // Discover Models endpoint: authorized request reaches providerRegistry.discoverModels
+    const discoverRes = await makeRequest("/api/providers/discover", {
+      method: "POST",
+      headers: {
+        Cookie: cookieHeader,
+        Origin: "http://127.0.0.1:3000",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        baseURL: "http://127.0.0.1:59999",
+      }),
+    });
+    // Status must be 200 with models array (empty for unreachable host, NOT 401 or 403)
+    assert.strictEqual(discoverRes.status, 200, "/api/providers/discover must pass authorization and return 200");
+    const discoverData = JSON.parse(discoverRes.body);
+    assert.ok(Array.isArray(discoverData.models), "models field must be an array");
   });
 
   it("CORS preflight responds with PUT and DELETE in allowed methods", async () => {

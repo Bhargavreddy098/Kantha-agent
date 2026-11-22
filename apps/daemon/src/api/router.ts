@@ -370,11 +370,37 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       return;
     }
 
-    // Enforce Origin check for state-changing browser requests (fail-closed unless valid CLI token)
+    // Enforce CSRF source-origin check for state-changing browser requests (fail-closed unless valid CLI token)
     const cliHeader = req.headers["x-kantha-cli-token"];
     const isCli = typeof cliHeader === "string" && cliManager.verifyCliToken(cliHeader);
     if ((req.method === "POST" || req.method === "PUT" || req.method === "DELETE") && !isCli) {
-      if (!origin || !fencing.isOriginValid(origin)) {
+      let sourceOrigin: string | undefined;
+      const rawOrigin = typeof req.headers.origin === "string" ? req.headers.origin.trim() : undefined;
+      let rawRefererOrigin: string | undefined;
+
+      if (typeof req.headers.referer === "string" && req.headers.referer.trim()) {
+        try {
+          rawRefererOrigin = new URL(req.headers.referer.trim()).origin.toLowerCase();
+        } catch {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Forbidden: Malformed Referer header" }));
+          return;
+        }
+      }
+
+      const normOrigin = rawOrigin ? rawOrigin.toLowerCase() : undefined;
+
+      // Direct mismatch defense: when both Origin and Referer are provided, their normalized origins must match directly
+      if (normOrigin && rawRefererOrigin && normOrigin !== rawRefererOrigin) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Forbidden: Origin and Referer mismatch" }));
+        return;
+      }
+
+      // Prefer Origin, fall back to Referer
+      sourceOrigin = normOrigin || rawRefererOrigin;
+
+      if (!sourceOrigin || !fencing.isOriginValid(sourceOrigin)) {
         res.writeHead(403, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Forbidden: Unauthorized or missing Origin" }));
         return;

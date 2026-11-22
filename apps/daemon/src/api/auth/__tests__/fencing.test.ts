@@ -23,8 +23,9 @@ describe("IngressFencing Unit Tests", () => {
     assert.strictEqual(fencing.isOriginValid("http://localhost:3000"), true);
     assert.strictEqual(fencing.isOriginValid("http://127.0.0.1:5173"), true);
     assert.strictEqual(fencing.isOriginValid("http://localhost:5173"), true);
-    assert.strictEqual(fencing.isOriginValid("http://localhost:5174"), true);
-    assert.strictEqual(fencing.isOriginValid("http://127.0.0.1:4173"), true);
+    // Only strictly configured frontend dev ports 3000 and 5173 are allowed
+    assert.strictEqual(fencing.isOriginValid("http://localhost:5174"), false);
+    assert.strictEqual(fencing.isOriginValid("http://127.0.0.1:4173"), false);
 
     // External origins are still blocked
     assert.strictEqual(fencing.isOriginValid("http://evil.com"), false);
