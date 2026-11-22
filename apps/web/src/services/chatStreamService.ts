@@ -3,6 +3,7 @@ import type { StoredMessage } from "../db/chatDb";
 export interface StreamChatOptions {
   messages: StoredMessage[];
   model?: string;
+  providerId?: string;
   onToken: (delta: string) => void;
   onReasoning: (delta: string) => void;
   onError: (error: Error) => void;
@@ -76,10 +77,19 @@ function formatMessagesForPayload(messages: StoredMessage[]) {
  * Streams real-time AI response from Bun daemon SSE endpoint.
  */
 export async function streamChatResponse(options: StreamChatOptions): Promise<void> {
-  const { messages, model, onToken, onReasoning, onError, onComplete, signal } = options;
+  const { messages, model, providerId, onToken, onReasoning, onError, onComplete, signal } = options;
 
   try {
     const payloadMessages = formatMessagesForPayload(messages);
+
+    let resolvedModel = model;
+    let resolvedProviderId = providerId;
+
+    if (model && !resolvedProviderId && model.includes(":")) {
+      const colonIdx = model.indexOf(":");
+      resolvedProviderId = model.slice(0, colonIdx);
+      resolvedModel = model.slice(colonIdx + 1);
+    }
 
     const response = await fetch("/api/chat/stream", {
       method: "POST",
@@ -89,7 +99,8 @@ export async function streamChatResponse(options: StreamChatOptions): Promise<vo
       },
       body: JSON.stringify({
         messages: payloadMessages,
-        model,
+        model: resolvedModel,
+        providerId: resolvedProviderId,
       }),
       signal,
     });

@@ -6,7 +6,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@astryxdesign/core";
-import { Paperclip, Loader2, Cpu, ChevronDown, Check } from "lucide-react";
+import { Paperclip, Loader2, Cpu, ChevronDown, Check, Search, X } from "lucide-react";
 import { AttachmentChip } from "./AttachmentChip";
 import {
   MAX_FILE_SIZE,
@@ -45,6 +45,7 @@ export const Composer: React.FC<ComposerProps> = ({
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -65,9 +66,9 @@ export const Composer: React.FC<ComposerProps> = ({
 
   const activeModelDisplayName = currentModelObj
     ? currentModelObj.name
-    : selectedModel
-    ? selectedModel.split(":").pop()
-    : "GPT-4o";
+    : selectedModel.includes(":")
+    ? selectedModel.slice(selectedModel.indexOf(":") + 1)
+    : selectedModel || "GPT-4o";
 
   const handleFiles = async (files: FileList | File[]) => {
     setErrorMessage(null);
@@ -181,6 +182,23 @@ export const Composer: React.FC<ComposerProps> = ({
       </div>
     ) : undefined;
 
+  const query = searchQuery.trim().toLowerCase();
+  const filteredProviders =
+    providersData?.providers
+      ?.map((provider) => {
+        const matchingModels = provider.models.filter(
+          (m) =>
+            !query ||
+            m.name.toLowerCase().includes(query) ||
+            m.id.toLowerCase().includes(query)
+        );
+        return {
+          ...provider,
+          models: matchingModels,
+        };
+      })
+      .filter((p) => p.models.length > 0) || [];
+
   const footerActionsContent = (
     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
       {/* Astryx DropdownMenu Model Selector */}
@@ -201,17 +219,82 @@ export const Composer: React.FC<ComposerProps> = ({
             </button>
           )}
         >
-          {providersData.providers.map((provider) => (
-            <DropdownMenuGroup key={provider.id} title={provider.name}>
+          {allModels.length > 5 && (
+            <div
+              style={{
+                padding: "6px 8px",
+                borderBottom: "1px solid var(--swiss-border)",
+                marginBottom: "4px",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  backgroundColor: "var(--swiss-bg)",
+                  padding: "4px 8px",
+                  border: "1px solid var(--swiss-border)",
+                  borderRadius: "4px",
+                }}
+              >
+                <Search size={12} style={{ color: "var(--swiss-text-secondary)" }} />
+                <input
+                  type="text"
+                  placeholder="Search models..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    outline: "none",
+                    fontSize: "11px",
+                    width: "100%",
+                    color: "var(--swiss-text)",
+                  }}
+                  autoFocus
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    style={{
+                      border: "none",
+                      background: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      color: "var(--swiss-text-secondary)",
+                      display: "flex",
+                    }}
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {query && filteredProviders.length === 0 && (
+            <div style={{ padding: "8px 12px", fontSize: "11px", color: "var(--swiss-text-secondary)" }}>
+              No models match "{searchQuery}"
+            </div>
+          )}
+
+          {filteredProviders.map((provider) => (
+            <DropdownMenuGroup key={provider.id} title={`${provider.name} (${provider.models.length})`}>
               {provider.models.map((m) => {
                 const fullId = `${provider.id}:${m.id}`;
                 const isSelected = selectedModel === fullId || selectedModel === m.id;
                 return (
                   <DropdownMenuItem
                     key={fullId}
-                    label={m.name}
+                    label={m.name === m.id ? m.name : `${m.name} (${m.id})`}
                     icon={isSelected ? <Check size={14} color="var(--swiss-accent)" /> : undefined}
-                    onClick={() => onSelectModel(fullId)}
+                    onClick={() => {
+                      onSelectModel(fullId);
+                      setSearchQuery("");
+                    }}
                   />
                 );
               })}

@@ -58,7 +58,13 @@ export const ChatWorkspace: React.FC = () => {
         const saved = localStorage.getItem("kantha_selected_model");
         const activeModel = saved || data.defaultModel || "openai:gpt-4o";
         setSelectedModel(activeModel);
-        setModelStatus(`Connected: ${activeModel.split(":").pop()}`);
+
+        const all = data.providers?.flatMap((p) =>
+          p.models.map((m) => ({ ...m, fullId: `${p.id}:${m.id}` }))
+        ) || [];
+        const match = all.find((m) => m.fullId === activeModel || m.id === activeModel);
+        const displayName = match?.name || (activeModel.includes(":") ? activeModel.slice(activeModel.indexOf(":") + 1) : activeModel);
+        setModelStatus(`Connected: ${displayName}`);
       })
       .catch(() => {
         setIsOnline(false);
@@ -91,7 +97,12 @@ export const ChatWorkspace: React.FC = () => {
   const handleSelectModel = (modelId: string) => {
     setSelectedModel(modelId);
     localStorage.setItem("kantha_selected_model", modelId);
-    setModelStatus(`Connected: ${modelId.split(":").pop()}`);
+    const all = providersData?.providers?.flatMap((p) =>
+      p.models.map((m) => ({ ...m, fullId: `${p.id}:${m.id}` }))
+    ) || [];
+    const match = all.find((m) => m.fullId === modelId || m.id === modelId);
+    const displayName = match?.name || (modelId.includes(":") ? modelId.slice(modelId.indexOf(":") + 1) : modelId);
+    setModelStatus(`Connected: ${displayName}`);
     if (activeConversationId) {
       chatDb.conversations.update(activeConversationId, { model: modelId, updatedAt: Date.now() });
     }
