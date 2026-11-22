@@ -1,15 +1,15 @@
 # Provider Integration & Model Egress Specification
 
-**Status:** APPROVED FOR PLANNING — Awaiting Gate 2 Sign-off  
-**Version:** 1.0.0  
-**Effective Date:** 2026-11-21  
+**Status:** APPROVED ARCHITECTURE — Gateway Core Defined ([Design Spec](../superpowers/specs/2026-11-22-gateway-core-design.md) · [Implementation Plan](../superpowers/plans/2026-11-22-gateway-core.md))  
+**Version:** 2.0.0  
+**Effective Date:** 2026-11-22  
 **Document Level:** Level 2 — Technology Specification
 
 ---
 
-## 1. Role of Vercel AI SDK 7 in Kantha
+## 1. Role of @kantha/gateway & Foundation Drivers in Kantha
 
-Kantha leverages **Vercel AI SDK 7** as its foundation model abstraction and streaming driver. This eliminates the need to maintain custom API clients for each model vendor while ensuring first-class TypeScript typing and streaming standards.
+Model egress and provider lifecycle are encapsulated within **`@kantha/gateway`** (`packages/gateway`), an isolated Effect-TS package. It preserves native frontier model capabilities (Anthropic thinking signatures, OpenAI reasoning items, prompt-cache breakpoints) without lossy cross-protocol translation. Concrete SQLite/Drizzle storage ports are implemented in `apps/daemon`.
 
 ### What the AI SDK Handles vs. What Kantha Harness Owns
 
@@ -41,16 +41,16 @@ sequenceDiagram
     participant Provider as AI Provider (Anthropic / OpenAI)
 
     Harness->>Gateway: complete(request, scope)
-    Gateway->>Budget: checkReservation(workspaceId, modelId, step)
+    Gateway->>Budget: checkBudget(sessionId)
     alt Budget Exhausted
         Budget-->>Gateway: Exceeded
         Gateway-->>Harness: throw HarnessError('budget_denied')
     else Budget Granted
-        Budget-->>Gateway: attemptId Issued
+        Budget-->>Gateway: Budget Approved
     end
     
     Gateway->>Secrets: getDecryptedKey(providerId)
-    Secrets-->>Gateway: Encrypted API Key
+    Secrets-->>Gateway: Decrypted API Key (ephemeral)
     
     Gateway->>Provider: streamText({ model, prompt, tools })
     
@@ -60,31 +60,29 @@ sequenceDiagram
     end
     
     Provider-->>Gateway: finish({ toolCalls, usage })
-    Gateway->>Budget: settleUsage(attemptId, usage.promptTokens, usage.completionTokens)
-    Gateway-->>Harness: HarnessModelResponse({ attemptId, text, toolCalls, finishReason })
+    Gateway->>Budget: recordTurnUsage(ledgerEntry)
+    Gateway-->>Harness: HarnessModelResponse({ text, toolCalls, finishReason })
 ```
 
 ---
 
 ## 3. Secret Management & Credential Protection Invariants
 
-1. **At-Rest Encryption:** Provider API keys are stored in `gateway_documents.secrets` encrypted using **AES-256-GCM** with a master key derived from the server environment (`GATEWAY_SECRET_KEY`).
-2. **Zero In-Memory Leakage:** Keys are decrypted in ephemeral Node.js memory only during the active HTTP dispatch to the provider.
+1. **At-Rest Encryption:** Provider API keys are stored in the SQLite `gateway_secrets` table encrypted using **AES-256-GCM** with a fresh 96-bit IV and AAD (`v1:<iv>:<tag>:<ciphertext>`). The master key is loaded via `MasterKeyProvider` from `~/.kantha/gateway.key` (enforced `0600` on POSIX / restricted ACLs on Windows) or overridden by `KANTHA_GATEWAY_MASTER_KEY`.
+2. **Zero In-Memory Leakage:** Keys are decrypted in ephemeral memory only during the active HTTP dispatch to the provider.
 3. **Zero Telemetry / Prompt Exposure:**
    - Keys are stripped from OpenTelemetry span attributes.
    - Keys are never serialized into `HarnessJournal` or `HarnessCheckpoint`.
    - Keys are never injected into LLM system prompts or agent instruction context.
-4. **Sandboxed Worker Isolation:** Tool sandbox containers have no access to the host network interface or the Gateway's `SecretStore`.
+4. **Sandboxed Worker Isolation:** Tool sandbox containers have no access to the host network interface or the Gateway's `VaultStore`.
 
 ---
 
-## 4. Model Selection & Fallback Matrix
+## 4. Model Selection & Dynamic Capability-Driven Tiers
 
-Kantha qualifies foundation models across three primary tiers:
+Rather than maintaining fragile hardcoded model lists, Kantha dynamically classifies foundation models across four capability and pricing tiers as defined in [Gateway Core Spec §5.6](../superpowers/specs/2026-11-22-gateway-core-design.md):
 
-| Tier | Reference Model | Provider Driver | Primary Use Case |
-|---|---|---|---|
-| **Tier 1 (Flagship / Coding)** | **Claude 3.5 Sonnet** (`claude-3-5-sonnet-latest`) | `@ai-sdk/anthropic` | Primary autonomous coding agent. Superior multi-file diffing, instruction following, and tool precision. |
-| **Tier 2 (Secondary Flagship)** | **GPT-4o** (`gpt-4o`) | `@ai-sdk/openai` | High-speed planning, initial task decomposition, and fallback coding. |
-| **Tier 3 (Fast / Compaction)** | **Claude 3.5 Haiku** / **GPT-4o-mini** | `@ai-sdk/anthropic` / `@ai-sdk/openai` | Context compaction, progress summarization, and lightweight classification. |
-| **Tier 4 (Local / Offline)** | **DeepSeek-Coder-V2** / **Qwen2.5-Coder** | `@ai-sdk/openai-compatible` | Local execution via Ollama or vLLM endpoints. |
+- **Tier 1 (Frontier BYOK):** High reasoning, multi-file code editing, verified reliable tool calling (cost >= $2.00/1M or benchmark override). Permitted for all autonomous harness roles.
+- **Tier 2 (General Purpose BYOK):** Fast coding, instruction following (standard paid models with tools).
+- **Tier 3 (Compaction & Utility):** Low-cost utility models (input price < $0.50/1M, e.g. Flash, Haiku, GPT-4o-mini).
+- **Tier 4 (Local / Free / Small):** Free or unverified local models (Ollama, small local weights). Autonomous multi-tool coding runs warn and require explicit policy override.
