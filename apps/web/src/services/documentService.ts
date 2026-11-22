@@ -65,6 +65,7 @@ export async function extractDocumentText(
 
   const response = await fetch("/api/documents/extract", {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
     },

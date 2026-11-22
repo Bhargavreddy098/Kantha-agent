@@ -40,7 +40,9 @@ export interface DiscoverModelsResponse {
 
 export const providerService = {
   async getProviders(): Promise<ProvidersDataResponse> {
-    const res = await fetch("/api/providers");
+    const res = await fetch("/api/providers", {
+      credentials: "include",
+    });
     if (!res.ok) {
       throw new Error(`Failed to fetch providers: status ${res.status}`);
     }
@@ -50,6 +52,7 @@ export const providerService = {
   async setDefaultModel(modelId: string): Promise<{ success: boolean; defaultModel: string }> {
     const res = await fetch("/api/providers/default", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ modelId }),
     });
@@ -70,6 +73,7 @@ export const providerService = {
   }): Promise<ProvidersDataResponse> {
     const res = await fetch("/api/providers", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(provider),
     });
@@ -83,6 +87,7 @@ export const providerService = {
   async deleteCustomProvider(providerId: string): Promise<ProvidersDataResponse> {
     const res = await fetch(`/api/providers/${encodeURIComponent(providerId)}`, {
       method: "DELETE",
+      credentials: "include",
     });
     if (!res.ok) {
       throw new Error("Failed to delete custom provider");
@@ -98,6 +103,7 @@ export const providerService = {
   }): Promise<TestConnectionResponse> {
     const res = await fetch("/api/providers/test", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
     });
@@ -111,6 +117,7 @@ export const providerService = {
   }): Promise<DiscoverModelsResponse> {
     const res = await fetch("/api/providers/discover", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
     });

@@ -17,13 +17,15 @@ export class IngressFencing {
     this.allowedHosts = new Set([
       `127.0.0.1:${this.port}`,
       `localhost:${this.port}`,
+      `[::1]:${this.port}`,
       // In case host has no port for default port 80
-      ...(this.port === 80 ? ["127.0.0.1", "localhost"] : []),
+      ...(this.port === 80 ? ["127.0.0.1", "localhost", "[::1]"] : []),
     ]);
 
     this.allowedOrigins = new Set([
       `http://127.0.0.1:${this.port}`,
       `http://localhost:${this.port}`,
+      `http://[::1]:${this.port}`,
     ]);
 
     // Explicitly allowed origins via options
@@ -80,12 +82,32 @@ export class IngressFencing {
     }
 
     const normalized = hostHeader.trim().toLowerCase();
-    return this.allowedHosts.has(normalized);
+    if (this.allowedHosts.has(normalized)) {
+      return true;
+    }
+
+    if (this.devOriginAllowed) {
+      try {
+        let host = normalized;
+        if (normalized.startsWith("[") && normalized.includes("]")) {
+          host = normalized.substring(0, normalized.indexOf("]") + 1);
+        } else if (normalized.includes(":")) {
+          host = normalized.split(":")[0];
+        }
+        const isLoopback = host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+        if (isLoopback) {
+          return true;
+        }
+      } catch {}
+    }
+
+    return false;
   }
 
   /**
    * Validates Origin header for browser requests and WebSocket upgrades.
-   * If origin is present, it must be in the allowedOrigins set.
+   * In production, origin must be in the allowedOrigins set.
+   * In development, any loopback origin (e.g. localhost, 127.0.0.1, [::1] on any port) is allowed.
    */
   isOriginValid(originHeader: string | undefined): boolean {
     if (!originHeader || typeof originHeader !== "string") {
@@ -93,7 +115,26 @@ export class IngressFencing {
     }
 
     const normalized = originHeader.trim().toLowerCase();
-    return this.allowedOrigins.has(normalized);
+    if (this.allowedOrigins.has(normalized)) {
+      return true;
+    }
+
+    if (this.devOriginAllowed) {
+      try {
+        const parsed = new URL(normalized);
+        const isLoopback =
+          parsed.hostname === "127.0.0.1" ||
+          parsed.hostname === "localhost" ||
+          parsed.hostname === "[::1]";
+        if (isLoopback && (parsed.protocol === "http:" || parsed.protocol === "https:")) {
+          return true;
+        }
+      } catch {
+        // malformed origin URL
+      }
+    }
+
+    return false;
   }
 
   /**

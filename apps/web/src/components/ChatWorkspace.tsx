@@ -47,7 +47,7 @@ export const ChatWorkspace: React.FC = () => {
   }, [themeMode]);
 
   const refreshProviders = useCallback(() => {
-    fetch("/api/providers")
+    fetch("/api/providers", { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("Offline");
         return res.json();
@@ -68,7 +68,7 @@ export const ChatWorkspace: React.FC = () => {
 
   // Establish ADR-007 session handshake and discover daemon providers
   useEffect(() => {
-    fetch("/api/auth/handshake")
+    fetch("/api/auth/handshake", { credentials: "include" })
       .then(() => refreshProviders())
       .catch(() => refreshProviders());
   }, [refreshProviders]);

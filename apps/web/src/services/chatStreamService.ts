@@ -83,6 +83,7 @@ export async function streamChatResponse(options: StreamChatOptions): Promise<vo
 
     const response = await fetch("/api/chat/stream", {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
       },

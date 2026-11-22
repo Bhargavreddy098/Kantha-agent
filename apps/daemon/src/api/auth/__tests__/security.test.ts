@@ -494,4 +494,44 @@ describe("ADR-007 Mandatory Security Verification Suite", () => {
     const setCookie = res.headers["set-cookie"]![0];
     assert.ok(setCookie.includes("Secure"), "Cookie must include Secure attribute when operating under HTTPS");
   });
+
+  it("Regression: Arbitrary development loopback Origin (e.g. 127.0.0.1:3003, localhost:8080) is accepted in dev mode", async () => {
+    for (const testOrigin of ["http://127.0.0.1:3003", "http://localhost:8080", "http://[::1]:5179"]) {
+      const devPairRes = await makeRequest("/api/auth/pair", {
+        method: "POST",
+        headers: {
+          Origin: testOrigin,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ticket: daemon.ticketRegistry.createTicket() }),
+      });
+      assert.strictEqual(devPairRes.status, 200, `${testOrigin} must be accepted in dev mode`);
+      assert.strictEqual(
+        devPairRes.headers["access-control-allow-origin"],
+        testOrigin,
+        `CORS header must echo permitted dev origin ${testOrigin}`
+      );
+    }
+  });
+
+  it("CORS preflight responds with PUT and DELETE in allowed methods", async () => {
+    const preflightRes = await makeRequest("/api/providers/custom-123", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:3000",
+        "Access-Control-Request-Method": "DELETE",
+      },
+    });
+    assert.strictEqual(preflightRes.status, 204);
+    assert.match(
+      (preflightRes.headers["access-control-allow-methods"] as string) || "",
+      /DELETE/,
+      "Preflight must allow DELETE"
+    );
+    assert.match(
+      (preflightRes.headers["access-control-allow-methods"] as string) || "",
+      /PUT/,
+      "Preflight must allow PUT"
+    );
+  });
 });

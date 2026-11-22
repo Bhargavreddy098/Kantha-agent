@@ -7,4 +7,8 @@ if (workspacePath.endsWith("apps\\daemon") || workspacePath.endsWith("apps/daemo
   workspacePath = path.resolve(workspacePath, "../..");
 }
 
-await startDaemonServer({ port, workspacePath });
+await startDaemonServer({
+  port,
+  workspacePath,
+  devOriginAllowed: process.env.NODE_ENV !== "production",
+});
