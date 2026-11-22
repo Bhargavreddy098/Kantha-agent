@@ -1,5 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Effect, type Layer } from "effect";
+import { VaultService, validateEndpointUrl } from "@kantha/gateway";
+import { gatewaySecrets } from "@kantha/db";
 
 export interface ProviderModel {
   id: string;
@@ -47,16 +50,99 @@ export function maskApiKey(key?: string): string {
   return `${key.slice(0, 4)}••••${key.slice(-4)}`;
 }
 
+export interface ProviderRegistryOptions {
+  dataDir: string;
+  db?: any;
+  gatewayLayer?: Layer.Layer<any>;
+}
+
 export class ProviderRegistry {
   private dataDir: string;
   private filePath: string;
   private customProviders: Map<string, ProviderConfig> = new Map();
   private userDefaultModel?: string;
+  private db?: any;
+  private gatewayLayer?: Layer.Layer<any>;
 
-  constructor(options: { dataDir: string }) {
+  constructor(options: ProviderRegistryOptions) {
     this.dataDir = options.dataDir;
     this.filePath = path.join(this.dataDir, "providers.json");
+    this.db = options.db;
+    this.gatewayLayer = options.gatewayLayer;
     this.load();
+  }
+
+  public setGatewayLayer(layer: Layer.Layer<any>): void {
+    this.gatewayLayer = layer;
+  }
+
+  public setDb(db: any): void {
+    this.db = db;
+  }
+
+  public async storeSecret(providerId: string, apiKey: string): Promise<void> {
+    if (!this.gatewayLayer) return;
+    const program = Effect.gen(function* () {
+      const vault = yield* VaultService;
+      yield* vault.storeSecret(providerId, apiKey);
+    });
+    await Effect.runPromise(program.pipe(Effect.provide(this.gatewayLayer)));
+  }
+
+  public async getDecryptedKey(providerId: string): Promise<string | null> {
+    if (!this.gatewayLayer) return null;
+    const program = Effect.gen(function* () {
+      const vault = yield* VaultService;
+      return yield* vault.getDecryptedKey(providerId);
+    });
+    return await Effect.runPromise(program.pipe(Effect.provide(this.gatewayLayer))).catch(() => null);
+  }
+
+  public async deleteSecret(providerId: string): Promise<void> {
+    if (!this.gatewayLayer) return;
+    const program = Effect.gen(function* () {
+      const vault = yield* VaultService;
+      yield* vault.deleteSecret(providerId);
+    });
+    await Effect.runPromise(program.pipe(Effect.provide(this.gatewayLayer))).catch(() => {});
+  }
+
+  public async listSecretIds(): Promise<Set<string>> {
+    const set = new Set<string>();
+    if (this.db) {
+      try {
+        const rows = await this.db.select({ id: gatewaySecrets.id }).from(gatewaySecrets);
+        for (const r of rows) set.add(r.id);
+      } catch {}
+    }
+    return set;
+  }
+
+  public async migrateLegacyKeys(): Promise<void> {
+    if (!fs.existsSync(this.filePath)) return;
+    try {
+      const raw = fs.readFileSync(this.filePath, "utf-8");
+      const data: StoredProvidersData = JSON.parse(raw);
+      if (!Array.isArray(data.customProviders)) return;
+
+      let migratedCount = 0;
+      for (const p of data.customProviders) {
+        if (p.apiKey && typeof p.apiKey === "string" && p.apiKey.trim()) {
+          await this.storeSecret(p.id, p.apiKey.trim());
+          delete p.apiKey;
+          migratedCount++;
+        }
+      }
+
+      if (migratedCount > 0) {
+        const tmpPath = `${this.filePath}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+        fs.renameSync(tmpPath, this.filePath);
+        this.load();
+      }
+    } catch (err) {
+      console.error("Failed to migrate legacy provider keys:", err);
+    }
   }
 
   private load(): void {
@@ -68,6 +154,7 @@ export class ProviderRegistry {
           this.userDefaultModel = data.defaultModel;
         }
         if (Array.isArray(data.customProviders)) {
+          this.customProviders.clear();
           for (const p of data.customProviders) {
             this.customProviders.set(p.id, { ...p, isCustom: true, configured: true });
           }
@@ -85,9 +172,15 @@ export class ProviderRegistry {
       }
       const data: StoredProvidersData = {
         defaultModel: this.userDefaultModel,
-        customProviders: Array.from(this.customProviders.values()),
+        customProviders: Array.from(this.customProviders.values()).map((p) => {
+          const clone = { ...p };
+          delete clone.apiKey;
+          return clone;
+        }),
       };
-      fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), "utf-8");
+      const tmpPath = `${this.filePath}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+      fs.renameSync(tmpPath, this.filePath);
     } catch {
       // Ignore write errors
     }
@@ -221,8 +314,45 @@ export class ProviderRegistry {
   public getSanitized(): { defaultModel: string; providers: SanitizedProviderConfig[] } {
     const all = this.getAll();
     const providers: SanitizedProviderConfig[] = all.map((p) => {
-      const hasApiKey = Boolean(p.apiKey && p.apiKey.trim().length > 0);
-      const masked = hasApiKey ? maskApiKey(p.apiKey) : undefined;
+      const hasApiKey = Boolean((p.apiKey && p.apiKey.trim().length > 0) || p.configured);
+      const masked = hasApiKey ? (p.apiKey ? maskApiKey(p.apiKey) : "••••••••") : undefined;
+      const sanitizedHeaders: Record<string, string> = {};
+      if (p.headers) {
+        for (const [k, v] of Object.entries(p.headers)) {
+          if (k.toLowerCase().includes("auth") || k.toLowerCase().includes("key") || k.toLowerCase().includes("secret")) {
+            sanitizedHeaders[k] = "••••••••";
+          } else {
+            sanitizedHeaders[k] = v;
+          }
+        }
+      }
+
+      return {
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        baseURL: p.baseURL,
+        hasApiKey,
+        maskedApiKey: masked,
+        headers: sanitizedHeaders,
+        models: p.models,
+        isCustom: p.isCustom,
+        configured: Boolean(p.configured || hasApiKey || p.type === "ollama"),
+      };
+    });
+
+    return {
+      defaultModel: this.getDefaultModel(),
+      providers,
+    };
+  }
+
+  public async getSanitizedAsync(): Promise<{ defaultModel: string; providers: SanitizedProviderConfig[] }> {
+    const secretIds = await this.listSecretIds();
+    const all = this.getAll();
+    const providers: SanitizedProviderConfig[] = all.map((p) => {
+      const hasApiKey = secretIds.has(p.id) || Boolean(p.apiKey && p.apiKey.trim().length > 0);
+      const masked = hasApiKey ? (p.apiKey ? maskApiKey(p.apiKey) : "••••••••") : undefined;
       const sanitizedHeaders: Record<string, string> = {};
       if (p.headers) {
         for (const [k, v] of Object.entries(p.headers)) {
@@ -311,13 +441,20 @@ export class ProviderRegistry {
     return null;
   }
 
-  public upsertCustom(providerInput: Partial<ProviderConfig> & { name: string; type: ProviderConfig["type"] }): ProviderConfig {
+  public async upsertCustom(providerInput: Partial<ProviderConfig> & { name: string; type: ProviderConfig["type"] }): Promise<ProviderConfig> {
     const id = providerInput.id || `custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const existing = this.customProviders.get(id);
 
-    const apiKey = providerInput.apiKey !== undefined && providerInput.apiKey !== ""
-      ? providerInput.apiKey
-      : existing?.apiKey;
+    const newApiKey = typeof providerInput.apiKey === "string" ? providerInput.apiKey.trim() : "";
+    if (newApiKey) {
+      await this.storeSecret(id, newApiKey);
+    }
+
+    let hasKey = Boolean(newApiKey);
+    if (!hasKey) {
+      const existingSecret = await this.getDecryptedKey(id);
+      hasKey = Boolean(existingSecret);
+    }
 
     const rawModels: ProviderModel[] = Array.isArray(providerInput.models) && providerInput.models.length > 0
       ? providerInput.models
@@ -344,11 +481,10 @@ export class ProviderRegistry {
       name: providerInput.name.trim(),
       type: providerInput.type,
       baseURL: (providerInput.baseURL || "").trim().replace(/\/+$/, ""),
-      apiKey,
       headers: providerInput.headers || existing?.headers || {},
       models,
       isCustom: true,
-      configured: Boolean(apiKey || providerInput.type === "ollama"),
+      configured: Boolean(hasKey || providerInput.type === "ollama"),
     };
 
     this.customProviders.set(id, updated);
@@ -356,23 +492,40 @@ export class ProviderRegistry {
     return updated;
   }
 
-  public deleteCustom(id: string): boolean {
+  public async deleteCustom(id: string): Promise<boolean> {
     if (this.customProviders.has(id)) {
       this.customProviders.delete(id);
       this.save();
+      await this.deleteSecret(id);
       return true;
     }
     return false;
   }
 
   public async testConnection(config: {
+    id?: string;
     baseURL?: string;
     apiKey?: string;
     type: string;
     headers?: Record<string, string>;
   }): Promise<{ success: boolean; latencyMs: number; error?: string; status?: number }> {
     const start = Date.now();
+    if (!config.apiKey && config.id) {
+      config.apiKey = (await this.getDecryptedKey(config.id)) || undefined;
+    }
+
     const url = (config.baseURL || "https://api.openai.com/v1").replace(/\/+$/, "");
+
+    try {
+      await validateEndpointUrl(url, { isLocal: config.type === "ollama" });
+    } catch (err: any) {
+      return {
+        success: false,
+        latencyMs: 0,
+        error: err.message || "SSRF validation rejected URL",
+      };
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(config.headers || {}),
@@ -430,11 +583,22 @@ export class ProviderRegistry {
   }
 
   public async discoverModels(config: {
+    id?: string;
     baseURL?: string;
     apiKey?: string;
     headers?: Record<string, string>;
   }): Promise<Array<{ id: string; name: string }>> {
+    if (!config.apiKey && config.id) {
+      config.apiKey = (await this.getDecryptedKey(config.id)) || undefined;
+    }
     const url = (config.baseURL || "https://api.openai.com/v1").replace(/\/+$/, "");
+
+    try {
+      await validateEndpointUrl(url, { isLocal: false });
+    } catch (err: any) {
+      throw new Error(`SSRF error: ${err.message}`);
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(config.headers || {}),

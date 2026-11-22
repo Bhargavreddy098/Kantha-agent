@@ -46,8 +46,9 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
   const sessionStore = new SessionStore({ port });
   const cliManager = new CliCredentialManager({ port, dataDir });
   const fencing = new IngressFencing({ port, devOriginAllowed: isDev });
-  const providerRegistry = new ProviderRegistry({ dataDir });
   const gatewayLayer = createDaemonGatewayLayer({ db, dataDir });
+  const providerRegistry = new ProviderRegistry({ dataDir, db, gatewayLayer });
+  await providerRegistry.migrateLegacyKeys();
 
   const initialTicket = ticketRegistry.createTicket();
 
@@ -418,8 +419,9 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
 
     // Model Providers Auto-Discovery & Sanitized Listing
     if (pathname === "/api/providers" && req.method === "GET") {
+      const sanitized = await providerRegistry.getSanitizedAsync();
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(providerRegistry.getSanitized()));
+      res.end(JSON.stringify(sanitized));
       return;
     }
 
@@ -447,7 +449,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
     if (pathname === "/api/providers" && req.method === "POST") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
-      req.on("end", () => {
+      req.on("end", async () => {
         try {
           const payload = JSON.parse(body || "{}");
           if (!payload.name || !payload.type) {
@@ -455,9 +457,10 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
             res.end(JSON.stringify({ error: "Provider name and type are required" }));
             return;
           }
-          const saved = providerRegistry.upsertCustom(payload);
+          const saved = await providerRegistry.upsertCustom(payload);
+          const sanitized = await providerRegistry.getSanitizedAsync();
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: true, provider: saved, ...providerRegistry.getSanitized() }));
+          res.end(JSON.stringify({ success: true, provider: saved, ...sanitized }));
         } catch (err: any) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: err.message || "Failed to save provider" }));
@@ -469,9 +472,10 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
     // Delete Custom Provider
     if (pathname?.startsWith("/api/providers/") && req.method === "DELETE") {
       const providerId = pathname.replace("/api/providers/", "").trim();
-      const deleted = providerRegistry.deleteCustom(providerId);
+      const deleted = await providerRegistry.deleteCustom(providerId);
+      const sanitized = await providerRegistry.getSanitizedAsync();
       res.writeHead(deleted ? 200 : 404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ success: deleted, ...providerRegistry.getSanitized() }));
+      res.end(JSON.stringify({ success: deleted, ...sanitized }));
       return;
     }
 
