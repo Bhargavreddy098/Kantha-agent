@@ -17,7 +17,7 @@ import {
   extractDocumentText,
 } from "../services/documentService";
 import type { StoredAttachment } from "../db/chatDb";
-import type { ProvidersResponse } from "./SettingsDialog";
+import type { ProvidersDataResponse } from "../services/providerService";
 
 export interface ComposerProps {
   onSubmit: (text: string, attachments: StoredAttachment[]) => void;
@@ -26,7 +26,8 @@ export interface ComposerProps {
   isDisabled?: boolean;
   selectedModel: string;
   onSelectModel: (modelId: string) => void;
-  providersData: ProvidersResponse | null;
+  providersData: ProvidersDataResponse | null;
+  onOpenSettings?: () => void;
 }
 
 export const Composer: React.FC<ComposerProps> = ({
@@ -37,6 +38,7 @@ export const Composer: React.FC<ComposerProps> = ({
   selectedModel,
   onSelectModel,
   providersData,
+  onOpenSettings,
 }) => {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<StoredAttachment[]>([]);
@@ -215,6 +217,14 @@ export const Composer: React.FC<ComposerProps> = ({
               })}
             </DropdownMenuGroup>
           ))}
+          {onOpenSettings && (
+            <DropdownMenuGroup title="Settings">
+              <DropdownMenuItem
+                label="Configure Providers..."
+                onClick={onOpenSettings}
+              />
+            </DropdownMenuGroup>
+          )}
         </DropdownMenu>
       )}
 

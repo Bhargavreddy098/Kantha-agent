@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { AppShell, ChatLayout, ChatMessageList, IconButton } from "@astryxdesign/core";
 import { Settings } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -6,7 +6,8 @@ import { Sidebar } from "./Sidebar";
 import { WelcomeScreen } from "./WelcomeScreen";
 import { MessageItem } from "./MessageItem";
 import { Composer } from "./Composer";
-import { SettingsDialog, type ProvidersResponse } from "./SettingsDialog";
+import { SettingsDialog } from "./SettingsDialog";
+import type { ProvidersDataResponse } from "../services/providerService";
 import {
   useConversations,
   useMessages,
@@ -28,7 +29,7 @@ export const ChatWorkspace: React.FC = () => {
   const [modelStatus, setModelStatus] = useState<string>("Connecting...");
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [providersData, setProvidersData] = useState<ProvidersResponse | null>(null);
+  const [providersData, setProvidersData] = useState<ProvidersDataResponse | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     return localStorage.getItem("kantha_selected_model") || "openai:gpt-4o";
   });
@@ -45,15 +46,13 @@ export const ChatWorkspace: React.FC = () => {
     document.documentElement.setAttribute("data-theme", themeMode);
   }, [themeMode]);
 
-  // Establish ADR-007 session handshake and discover daemon providers
-  useEffect(() => {
-    fetch("/api/auth/handshake")
-      .then(() => fetch("/api/providers"))
+  const refreshProviders = useCallback(() => {
+    fetch("/api/providers")
       .then((res) => {
         if (!res.ok) throw new Error("Offline");
         return res.json();
       })
-      .then((data: ProvidersResponse) => {
+      .then((data: ProvidersDataResponse) => {
         setIsOnline(true);
         setProvidersData(data);
         const saved = localStorage.getItem("kantha_selected_model");
@@ -66,6 +65,13 @@ export const ChatWorkspace: React.FC = () => {
         setModelStatus("Ready: Local Model Engine");
       });
   }, []);
+
+  // Establish ADR-007 session handshake and discover daemon providers
+  useEffect(() => {
+    fetch("/api/auth/handshake")
+      .then(() => refreshProviders())
+      .catch(() => refreshProviders());
+  }, [refreshProviders]);
 
   // Sync active conversation with list to prevent orphaned zombie states
   useEffect(() => {
@@ -86,7 +92,21 @@ export const ChatWorkspace: React.FC = () => {
     setSelectedModel(modelId);
     localStorage.setItem("kantha_selected_model", modelId);
     setModelStatus(`Connected: ${modelId.split(":").pop()}`);
+    if (activeConversationId) {
+      chatDb.conversations.update(activeConversationId, { model: modelId, updatedAt: Date.now() });
+    }
   };
+
+  // Restore active conversation's specific model if saved
+  useEffect(() => {
+    if (activeConversationId) {
+      const active = conversations.find((c) => c.id === activeConversationId);
+      if (active?.model) {
+        setSelectedModel(active.model);
+        setModelStatus(`Connected: ${active.model.split(":").pop()}`);
+      }
+    }
+  }, [activeConversationId, conversations]);
 
   const handleClearAllHistory = async () => {
     await chatDb.messages.clear();
@@ -312,6 +332,7 @@ export const ChatWorkspace: React.FC = () => {
               selectedModel={selectedModel}
               onSelectModel={handleSelectModel}
               providersData={providersData}
+              onOpenSettings={() => setIsSettingsOpen(true)}
             />
           }
         >
@@ -354,6 +375,7 @@ export const ChatWorkspace: React.FC = () => {
         conversationCount={conversations.length}
         messageCount={allMessageCount}
         isDaemonOnline={isOnline}
+        onProvidersUpdated={refreshProviders}
       />
     </AppShell>
   );

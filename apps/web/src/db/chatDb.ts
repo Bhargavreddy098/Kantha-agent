@@ -14,6 +14,7 @@ export interface Conversation {
   title: string;
   createdAt: number;
   updatedAt: number;
+  model?: string;
 }
 
 export interface StoredMessage {

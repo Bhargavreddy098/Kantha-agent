@@ -1,4 +1,11 @@
 import type http from "node:http";
+import { streamText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import type { ProviderRegistry, ProviderConfig } from "../services/providerRegistry";
+
+export type AiStreamMessages = NonNullable<Parameters<typeof streamText>[0]["messages"]>;
 
 export interface ChatMessagePayload {
   role: string;
@@ -12,58 +19,98 @@ export interface StreamDelta {
   reasoning: string;
 }
 
-const MAX_DOCUMENT_CHAR_LENGTH = 30_000;
+export const MAX_DOCUMENT_CHAR_LENGTH = 30_000;
 
 /**
- * Sanitizes conversation history before dispatching to upstream OpenAI /chat/completions:
- * 1. Strips previous assistant reasoning blocks (which upstream APIs reject).
- * 2. Truncates oversized document contexts to 30,000 characters with an inline warning.
+ * Sanitizes and maps incoming conversation messages into Vercel AI SDK CoreMessage format:
+ * 1. Limits conversation to the last 20 messages (sliding window).
+ * 2. Truncates oversized document text content to 30,000 characters.
+ * 3. Formats vision image parts into `{ type: 'image', image: dataUrl }`.
+ * 4. Strips prior assistant reasoning blocks to prevent upstream provider errors.
  */
-export function sanitizeMessagesForUpstream(
+export function convertToCoreMessages(
   messages: ChatMessagePayload[]
-): Array<{ role: string; content: string | Array<any> }> {
-  // Apply 20-message sliding window to stay safely within token quotas
+): AiStreamMessages {
   const windowed = messages.slice(-20);
 
-  return windowed.map((msg) => {
-    let content = msg.content;
+  return windowed.map((msg): any => {
+    const rawContent = msg.content;
 
-    if (typeof content === "string" && content.length > MAX_DOCUMENT_CHAR_LENGTH) {
-      content =
-        content.slice(0, MAX_DOCUMENT_CHAR_LENGTH) +
-        `\n\n[Document truncated to first ${MAX_DOCUMENT_CHAR_LENGTH.toLocaleString()} characters]`;
-    } else if (Array.isArray(content)) {
-      content = content.map((part) => {
-        if (
-          part.type === "text" &&
-          typeof part.text === "string" &&
-          part.text.length > MAX_DOCUMENT_CHAR_LENGTH
-        ) {
-          return {
-            ...part,
-            text:
-              part.text.slice(0, MAX_DOCUMENT_CHAR_LENGTH) +
-              `\n\n[Document truncated to first ${MAX_DOCUMENT_CHAR_LENGTH.toLocaleString()} characters]`,
-          };
+    if (msg.role === "assistant") {
+      const textContent = typeof rawContent === "string" ? rawContent : "";
+      return {
+        role: "assistant",
+        content: textContent,
+      };
+    }
+
+    if (msg.role === "system") {
+      const textContent = typeof rawContent === "string" ? rawContent : "";
+      return {
+        role: "system",
+        content: textContent,
+      };
+    }
+
+    // Default to user role
+    if (typeof rawContent === "string") {
+      let text = rawContent;
+      if (text.length > MAX_DOCUMENT_CHAR_LENGTH) {
+        text =
+          text.slice(0, MAX_DOCUMENT_CHAR_LENGTH) +
+          `\n\n[Document truncated to first ${MAX_DOCUMENT_CHAR_LENGTH.toLocaleString()} characters]`;
+      }
+      return {
+        role: "user",
+        content: text,
+      };
+    }
+
+    if (Array.isArray(rawContent)) {
+      const parts: any[] = [];
+      for (const part of rawContent) {
+        if (part.type === "text" && typeof part.text === "string") {
+          let text = part.text;
+          if (text.length > MAX_DOCUMENT_CHAR_LENGTH) {
+            text =
+              text.slice(0, MAX_DOCUMENT_CHAR_LENGTH) +
+              `\n\n[Document truncated to first ${MAX_DOCUMENT_CHAR_LENGTH.toLocaleString()} characters]`;
+          }
+          parts.push({ type: "text", text });
+        } else if (part.type === "image_url" && part.image_url?.url) {
+          parts.push({ type: "image", image: part.image_url.url });
+        } else if (part.type === "image" && part.image) {
+          parts.push({ type: "image", image: part.image });
         }
-        return part;
-      });
+      }
+      return {
+        role: "user",
+        content: parts.length > 0 ? parts : "",
+      };
     }
 
     return {
-      role: msg.role,
-      content,
+      role: "user",
+      content: String(rawContent || ""),
     };
   });
 }
 
 /**
- * Normalizes OpenAI-compatible delta payloads, supporting standard content,
- * OpenAI o1/o3/DeepSeek `reasoning_content`, and Anthropic-compatible `thinking`.
+ * Backward compatibility helper for existing sanitize tests.
+ */
+export function sanitizeMessagesForUpstream(
+  messages: ChatMessagePayload[]
+): Array<{ role: string; content: string | Array<any> }> {
+  const core = convertToCoreMessages(messages);
+  return core.map((m) => ({ role: m.role, content: m.content as any }));
+}
+
+/**
+ * Normalizes OpenAI-compatible delta payloads (kept for test compatibility).
  */
 export function parseOpenAiDelta(chunk: any): StreamDelta {
   const delta = chunk?.choices?.[0]?.delta || {};
-
   const content = typeof delta.content === "string" ? delta.content : "";
   const reasoning =
     typeof delta.reasoning_content === "string"
@@ -86,18 +133,52 @@ export function formatSseEvent(
 }
 
 /**
- * Handles incoming chat streaming requests over SSE with AbortController cancellation.
+ * Factory creating a LanguageModel instance based on provider type and configuration.
+ */
+export function createLanguageModel(provider: ProviderConfig, modelId: string): any {
+  const baseURL = provider.baseURL?.replace(/\/+$/, "");
+  const headers = provider.headers;
+
+  if (provider.type === "anthropic") {
+    const anthropic = createAnthropic({
+      apiKey: provider.apiKey,
+      baseURL,
+      headers,
+    });
+    return anthropic(modelId);
+  }
+
+  if (provider.type === "openai") {
+    const openai = createOpenAI({
+      apiKey: provider.apiKey,
+      baseURL,
+      headers,
+    });
+    return openai(modelId);
+  }
+
+  // Ollama or OpenAI-compatible (Groq, DeepSeek, OpenRouter, Custom)
+  const compatible = createOpenAICompatible({
+    name: provider.id,
+    baseURL: baseURL || "http://127.0.0.1:11434/v1",
+    apiKey: provider.apiKey,
+    headers,
+  });
+  return compatible(modelId);
+}
+
+export interface ChatStreamContext {
+  providerRegistry: ProviderRegistry;
+}
+
+/**
+ * Handles incoming chat streaming requests over SSE via Vercel AI SDK.
  */
 export async function handleChatStreamRequest(
   req: http.IncomingMessage,
-  res: http.ServerResponse
+  res: http.ServerResponse,
+  context?: ChatStreamContext
 ): Promise<void> {
-  const openAiApiKey = process.env.OPENAI_API_KEY;
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-  const openAiBaseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
-  const ollamaBaseUrl = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1").replace(/\/+$/, "");
-  const defaultModel = process.env.OPENAI_MODEL || (openAiApiKey ? "gpt-4o" : "llama3.2");
-
   let body = "";
   req.on("data", (chunk) => {
     body += chunk;
@@ -109,7 +190,6 @@ export async function handleChatStreamRequest(
       const rawMessages: ChatMessagePayload[] = Array.isArray(payload.messages)
         ? payload.messages
         : [];
-      const requestedModel = (payload.model || defaultModel).trim();
 
       if (rawMessages.length === 0) {
         res.writeHead(400, { "Content-Type": "application/json" });
@@ -117,39 +197,32 @@ export async function handleChatStreamRequest(
         return;
       }
 
-      // Determine upstream endpoint, model ID, and authorization
-      let upstreamUrl = `${openAiBaseUrl}/chat/completions`;
-      let targetApiKey = openAiApiKey;
-      let targetModel = requestedModel;
+      // Resolve provider from registry or fallback built-ins
+      const registry = context?.providerRegistry;
+      const requestedModel = typeof payload.model === "string" && payload.model.trim()
+        ? payload.model.trim()
+        : registry?.getDefaultModel() || "openai:gpt-4o";
 
-      const isOllama =
-        requestedModel.startsWith("ollama:") ||
-        ["llama3.2", "deepseek-r1", "qwen2.5-coder"].includes(requestedModel);
-
-      if (isOllama) {
-        upstreamUrl = `${ollamaBaseUrl}/chat/completions`;
-        targetApiKey = process.env.OLLAMA_API_KEY || "ollama";
-        targetModel = requestedModel.replace(/^ollama:/, "");
-      } else if (requestedModel.startsWith("anthropic:")) {
-        targetModel = requestedModel.replace(/^anthropic:/, "");
-        targetApiKey = anthropicApiKey || openAiApiKey;
-      } else if (requestedModel.startsWith("openai:")) {
-        targetModel = requestedModel.replace(/^openai:/, "");
+      const resolution = registry?.getProviderForModel(requestedModel);
+      if (!resolution) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: `Unknown model or provider: ${requestedModel}` }));
+        return;
       }
 
-      if (!targetApiKey && !isOllama) {
+      const { provider, modelId } = resolution;
+
+      if (!provider.configured && !provider.apiKey && provider.type !== "ollama") {
         res.writeHead(503, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
-            error:
-              "API key is not configured for the requested model provider. Please configure OPENAI_API_KEY, ANTHROPIC_API_KEY, or switch to a local Ollama model in Settings.",
+            error: `API key is not configured for provider '${provider.name}'. Please configure it in Settings.`,
           })
         );
         return;
       }
 
-      const sanitizedMessages = sanitizeMessagesForUpstream(rawMessages);
-
+      const coreMessages = convertToCoreMessages(rawMessages);
       const abortController = new AbortController();
       let clientClosed = false;
 
@@ -158,36 +231,13 @@ export async function handleChatStreamRequest(
         abortController.abort();
       });
 
-      const upstreamResponse = await fetch(upstreamUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${targetApiKey}`,
-        },
-        body: JSON.stringify({
-          model: targetModel,
-          messages: sanitizedMessages,
-          stream: true,
-        }),
-        signal: abortController.signal,
+      const languageModel = createLanguageModel(provider, modelId);
+
+      const result = streamText({
+        model: languageModel,
+        messages: coreMessages,
+        abortSignal: abortController.signal,
       });
-
-      if (!upstreamResponse.ok) {
-        const errorText = await upstreamResponse.text().catch(() => "");
-        let errorMessage = `Upstream API returned status ${upstreamResponse.status}`;
-        try {
-          const parsed = JSON.parse(errorText);
-          if (parsed.error?.message) {
-            errorMessage = parsed.error.message;
-          }
-        } catch {
-          // keep fallback error text
-        }
-
-        res.writeHead(upstreamResponse.status, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: errorMessage }));
-        return;
-      }
 
       // Stream SSE headers
       res.writeHead(200, {
@@ -197,43 +247,23 @@ export async function handleChatStreamRequest(
         "X-Accel-Buffering": "no",
       });
 
-      if (!upstreamResponse.body) {
-        res.write(formatSseEvent("[DONE]"));
-        res.end();
-        return;
-      }
+      for await (const part of result.fullStream) {
+        if (clientClosed) break;
 
-      const reader = upstreamResponse.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (!clientClosed) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data:")) continue;
-
-          const dataPayload = trimmed.replace(/^data:\s*/, "");
-          if (dataPayload === "[DONE]") {
-            res.write(formatSseEvent("[DONE]"));
-            continue;
+        const partType = (part as any).type;
+        if (partType === "text-delta") {
+          const text = (part as any).text ?? (part as any).textDelta ?? "";
+          if (text) {
+            res.write(formatSseEvent({ content: text, reasoning: "" }));
           }
-
-          try {
-            const parsed = JSON.parse(dataPayload);
-            const delta = parseOpenAiDelta(parsed);
-            if (delta.content || delta.reasoning) {
-              res.write(formatSseEvent(delta));
-            }
-          } catch {
-            // Malformed chunk or keep-alive heartbeat
+        } else if (partType === "reasoning-delta" || partType === "reasoning") {
+          const text = (part as any).text ?? (part as any).textDelta ?? "";
+          if (text) {
+            res.write(formatSseEvent({ content: "", reasoning: text }));
           }
+        } else if (partType === "error") {
+          const errMsg = (part as any).error?.message || "Stream error";
+          res.write(formatSseEvent({ content: `\n\n[Error: ${errMsg}]`, reasoning: "" }));
         }
       }
 

@@ -10,9 +10,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.105",
+    "@ai-sdk/openai": "^4.0.115",
+    "@ai-sdk/openai-compatible": "^3.0.92",
     "@kantha/db": "workspace:*",
     "@kantha/protocol": "workspace:*",
-    "ai": "^4.1.0",
+    "ai": "^7.0.170",
     "effect": "^3.13.0",
     "mammoth": "^1.13.0",
     "pdf-parse": "^2.4.5",
