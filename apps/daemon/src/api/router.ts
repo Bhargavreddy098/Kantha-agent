@@ -17,6 +17,7 @@ import {
 import { handleChatStreamRequest } from "./chat";
 import { handleDocumentExtractRequest } from "./documents";
 import { ProviderRegistry } from "../services/providerRegistry";
+import { createDaemonGatewayLayer } from "../services/gateway";
 
 export interface DaemonServerOptions {
   port?: number;
@@ -46,6 +47,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
   const cliManager = new CliCredentialManager({ port, dataDir });
   const fencing = new IngressFencing({ port, devOriginAllowed: isDev });
   const providerRegistry = new ProviderRegistry({ dataDir });
+  const gatewayLayer = createDaemonGatewayLayer({ db, dataDir });
 
   const initialTicket = ticketRegistry.createTicket();
 
@@ -511,7 +513,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
 
     // Vercel AI SDK Chat Streaming with Reasoning Separation
     if (pathname === "/api/chat/stream" && req.method === "POST") {
-      await handleChatStreamRequest(req, res, { providerRegistry });
+      await handleChatStreamRequest(req, res, { providerRegistry, gatewayLayer });
       return;
     }
 

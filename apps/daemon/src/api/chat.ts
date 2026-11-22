@@ -4,6 +4,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { ProviderRegistry, ProviderConfig } from "../services/providerRegistry";
+import { Effect, Fiber, Stream, type Layer } from "effect";
+import { GatewayService, type KanthaMessage } from "@kantha/gateway";
 
 export type AiStreamMessages = NonNullable<Parameters<typeof streamText>[0]["messages"]>;
 
@@ -168,7 +170,8 @@ export function createLanguageModel(provider: ProviderConfig, modelId: string): 
 }
 
 export interface ChatStreamContext {
-  providerRegistry: ProviderRegistry;
+  providerRegistry?: ProviderRegistry;
+  gatewayLayer?: Layer.Layer<GatewayService>;
 }
 
 /**
@@ -238,6 +241,64 @@ export async function handleChatStreamRequest(
             error: `API key is not configured for provider '${provider.name}'. Please configure it in Settings.`,
           })
         );
+        return;
+      }
+
+      if (context?.gatewayLayer) {
+        const kanthaMessages: KanthaMessage[] = rawMessages.map((msg) => ({
+          role:
+            msg.role === "assistant" || msg.role === "system" || msg.role === "tool"
+              ? msg.role
+              : "user",
+          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+        }));
+
+        let clientClosed = false;
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        });
+
+        const program = Effect.scoped(
+          Effect.gen(function* () {
+            const gateway = yield* GatewayService;
+            const stream = yield* gateway.stream({
+              providerId: provider.id,
+              modelId,
+              messages: kanthaMessages,
+              attribution: { sessionId: payload.sessionId || "default" },
+            });
+
+            yield* Stream.runForEach(stream, (delta) =>
+              Effect.sync(() => {
+                if (clientClosed) return;
+                if (delta.text) {
+                  res.write(formatSseEvent({ content: delta.text, reasoning: "" }));
+                }
+                if (delta.reasonings && delta.reasonings.length > 0) {
+                  for (const r of delta.reasonings) {
+                    if (r.text) {
+                      res.write(formatSseEvent({ content: "", reasoning: r.text }));
+                    }
+                  }
+                }
+              })
+            );
+
+            if (!clientClosed) {
+              res.write(formatSseEvent("[DONE]"));
+              res.end();
+            }
+          })
+        );
+
+        const fiber = Effect.runFork(program.pipe(Effect.provide(context.gatewayLayer)));
+        req.on("close", () => {
+          clientClosed = true;
+          Effect.runFork(Fiber.interrupt(fiber));
+        });
         return;
       }
 

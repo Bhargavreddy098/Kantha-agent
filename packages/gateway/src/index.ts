@@ -23,3 +23,4 @@ export * from "./adapters/gemini";
 export * from "./adapters/compatible";
 export * from "./ledger/calculator";
 export * from "./ledger/service";
+export * from "./service";
