@@ -82,15 +82,6 @@ export async function streamChatResponse(options: StreamChatOptions): Promise<vo
   try {
     const payloadMessages = formatMessagesForPayload(messages);
 
-    let resolvedModel = model;
-    let resolvedProviderId = providerId;
-
-    if (model && !resolvedProviderId && model.includes(":")) {
-      const colonIdx = model.indexOf(":");
-      resolvedProviderId = model.slice(0, colonIdx);
-      resolvedModel = model.slice(colonIdx + 1);
-    }
-
     const response = await fetch("/api/chat/stream", {
       method: "POST",
       credentials: "include",
@@ -99,8 +90,8 @@ export async function streamChatResponse(options: StreamChatOptions): Promise<vo
       },
       body: JSON.stringify({
         messages: payloadMessages,
-        model: resolvedModel,
-        providerId: resolvedProviderId,
+        model,
+        providerId,
       }),
       signal,
     });

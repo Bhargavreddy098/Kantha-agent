@@ -94,15 +94,24 @@ export const ChatWorkspace: React.FC = () => {
     setThemeMode((prev) => (prev === "light" ? "dark" : "light"));
   };
 
-  const handleSelectModel = (modelId: string) => {
-    setSelectedModel(modelId);
-    localStorage.setItem("kantha_selected_model", modelId);
+  const resolveModelDisplayName = (modelId: string) => {
     const all = providersData?.providers?.flatMap((p) =>
       p.models.map((m) => ({ ...m, fullId: `${p.id}:${m.id}` }))
     ) || [];
     const match = all.find((m) => m.fullId === modelId || m.id === modelId);
-    const displayName = match?.name || (modelId.includes(":") ? modelId.slice(modelId.indexOf(":") + 1) : modelId);
-    setModelStatus(`Connected: ${displayName}`);
+    if (match) return match.name;
+    for (const p of providersData?.providers || []) {
+      if (modelId.startsWith(`${p.id}:`)) {
+        return modelId.slice(p.id.length + 1);
+      }
+    }
+    return modelId;
+  };
+
+  const handleSelectModel = (modelId: string) => {
+    setSelectedModel(modelId);
+    localStorage.setItem("kantha_selected_model", modelId);
+    setModelStatus(`Connected: ${resolveModelDisplayName(modelId)}`);
     if (activeConversationId) {
       chatDb.conversations.update(activeConversationId, { model: modelId, updatedAt: Date.now() });
     }
@@ -114,10 +123,10 @@ export const ChatWorkspace: React.FC = () => {
       const active = conversations.find((c) => c.id === activeConversationId);
       if (active?.model) {
         setSelectedModel(active.model);
-        setModelStatus(`Connected: ${active.model.split(":").pop()}`);
+        setModelStatus(`Connected: ${resolveModelDisplayName(active.model)}`);
       }
     }
-  }, [activeConversationId, conversations]);
+  }, [activeConversationId, conversations, providersData]);
 
   const handleClearAllHistory = async () => {
     await chatDb.messages.clear();
@@ -187,9 +196,18 @@ export const ChatWorkspace: React.FC = () => {
 
     const fullHistory = [...messages, userMessage];
 
+    let targetProviderId: string | undefined;
+    for (const p of providersData?.providers || []) {
+      if (selectedModel.startsWith(`${p.id}:`)) {
+        targetProviderId = p.id;
+        break;
+      }
+    }
+
     await streamChatResponse({
       messages: fullHistory,
       model: selectedModel,
+      providerId: targetProviderId,
       signal: abortController.signal,
       onToken: async (delta) => {
         accumulatedContent += delta;

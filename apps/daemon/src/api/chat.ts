@@ -299,6 +299,7 @@ export async function handleChatStreamRequest(
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: err.message || "Internal streaming error" }));
       } else {
+        res.write(formatSseEvent({ content: `\n\n[Error: ${err.message || "Internal streaming error"}]`, reasoning: "" }));
         res.end();
       }
     }

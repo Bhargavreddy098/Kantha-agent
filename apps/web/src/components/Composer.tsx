@@ -49,26 +49,32 @@ export const Composer: React.FC<ComposerProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const providersList = providersData?.providers || [];
+
   // Compute active model display name
   const allModels =
-    providersData?.providers?.flatMap((p) =>
+    providersList.flatMap((p) =>
       p.models.map((m) => ({
         ...m,
         providerId: p.id,
         providerName: p.name,
         fullId: `${p.id}:${m.id}`,
       }))
-    ) || [];
+    );
 
   const currentModelObj = allModels.find(
     (m) => m.fullId === selectedModel || m.id === selectedModel
   );
 
-  const activeModelDisplayName = currentModelObj
-    ? currentModelObj.name
-    : selectedModel.includes(":")
-    ? selectedModel.slice(selectedModel.indexOf(":") + 1)
-    : selectedModel || "GPT-4o";
+  const activeModelDisplayName = (() => {
+    if (currentModelObj) return currentModelObj.name;
+    for (const p of providersList) {
+      if (selectedModel.startsWith(`${p.id}:`)) {
+        return selectedModel.slice(p.id.length + 1);
+      }
+    }
+    return selectedModel || "GPT-4o";
+  })();
 
   const handleFiles = async (files: FileList | File[]) => {
     setErrorMessage(null);
@@ -227,6 +233,7 @@ export const Composer: React.FC<ComposerProps> = ({
                 marginBottom: "4px",
               }}
               onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
             >
               <div
                 style={{
@@ -245,6 +252,7 @@ export const Composer: React.FC<ComposerProps> = ({
                   placeholder="Search models..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
                   style={{
                     border: "none",
                     background: "none",
@@ -285,7 +293,9 @@ export const Composer: React.FC<ComposerProps> = ({
             <DropdownMenuGroup key={provider.id} title={`${provider.name} (${provider.models.length})`}>
               {provider.models.map((m) => {
                 const fullId = `${provider.id}:${m.id}`;
-                const isSelected = selectedModel === fullId || selectedModel === m.id;
+                const isSelected =
+                  selectedModel === fullId ||
+                  (selectedModel === m.id && !providersList.some((p) => selectedModel.startsWith(`${p.id}:`)));
                 return (
                   <DropdownMenuItem
                     key={fullId}
