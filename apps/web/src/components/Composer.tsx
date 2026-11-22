@@ -1,6 +1,12 @@
 import React, { useState, useRef } from "react";
-import { ChatComposer, IconButton } from "@astryxdesign/core";
-import { Paperclip, Loader2 } from "lucide-react";
+import {
+  ChatComposer,
+  IconButton,
+  DropdownMenu,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+} from "@astryxdesign/core";
+import { Paperclip, Loader2, Cpu, ChevronDown, Check } from "lucide-react";
 import { AttachmentChip } from "./AttachmentChip";
 import {
   MAX_FILE_SIZE,
@@ -11,12 +17,16 @@ import {
   extractDocumentText,
 } from "../services/documentService";
 import type { StoredAttachment } from "../db/chatDb";
+import type { ProvidersResponse } from "./SettingsDialog";
 
 export interface ComposerProps {
   onSubmit: (text: string, attachments: StoredAttachment[]) => void;
   onStop?: () => void;
   isGenerating?: boolean;
   isDisabled?: boolean;
+  selectedModel: string;
+  onSelectModel: (modelId: string) => void;
+  providersData: ProvidersResponse | null;
 }
 
 export const Composer: React.FC<ComposerProps> = ({
@@ -24,6 +34,9 @@ export const Composer: React.FC<ComposerProps> = ({
   onStop,
   isGenerating = false,
   isDisabled = false,
+  selectedModel,
+  onSelectModel,
+  providersData,
 }) => {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<StoredAttachment[]>([]);
@@ -32,6 +45,27 @@ export const Composer: React.FC<ComposerProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Compute active model display name
+  const allModels =
+    providersData?.providers?.flatMap((p) =>
+      p.models.map((m) => ({
+        ...m,
+        providerId: p.id,
+        providerName: p.name,
+        fullId: `${p.id}:${m.id}`,
+      }))
+    ) || [];
+
+  const currentModelObj = allModels.find(
+    (m) => m.fullId === selectedModel || m.id === selectedModel
+  );
+
+  const activeModelDisplayName = currentModelObj
+    ? currentModelObj.name
+    : selectedModel
+    ? selectedModel.split(":").pop()
+    : "GPT-4o";
 
   const handleFiles = async (files: FileList | File[]) => {
     setErrorMessage(null);
@@ -115,6 +149,8 @@ export const Composer: React.FC<ComposerProps> = ({
           padding: "8px 12px",
           backgroundColor: "var(--swiss-bg)",
           borderBottom: "1px solid var(--swiss-border)",
+          borderTopLeftRadius: "12px",
+          borderTopRightRadius: "12px",
         }}
       >
         {attachments.map((att) => (
@@ -144,7 +180,46 @@ export const Composer: React.FC<ComposerProps> = ({
     ) : undefined;
 
   const footerActionsContent = (
-    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      {/* Astryx DropdownMenu Model Selector */}
+      {providersData?.providers && providersData.providers.length > 0 && (
+        <DropdownMenu
+          renderTrigger={(triggerProps) => (
+            <button
+              type="button"
+              className="swiss-model-pill"
+              title="Select AI Model"
+              {...triggerProps}
+            >
+              <Cpu size={13} style={{ color: "var(--swiss-accent)" }} />
+              <span style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {activeModelDisplayName}
+              </span>
+              <ChevronDown size={12} style={{ opacity: 0.6 }} />
+            </button>
+          )}
+        >
+          {providersData.providers.map((provider) => (
+            <DropdownMenuGroup key={provider.id} title={provider.name}>
+              {provider.models.map((m) => {
+                const fullId = `${provider.id}:${m.id}`;
+                const isSelected = selectedModel === fullId || selectedModel === m.id;
+                return (
+                  <DropdownMenuItem
+                    key={fullId}
+                    label={m.name}
+                    icon={isSelected ? <Check size={14} color="var(--swiss-accent)" /> : undefined}
+                    onClick={() => onSelectModel(fullId)}
+                  />
+                );
+              })}
+            </DropdownMenuGroup>
+          ))}
+        </DropdownMenu>
+      )}
+
+      <div style={{ width: "1px", height: "16px", backgroundColor: "var(--swiss-border)" }} />
+
       <input
         ref={fileInputRef}
         type="file"
@@ -168,6 +243,7 @@ export const Composer: React.FC<ComposerProps> = ({
 
   return (
     <div
+      className="swiss-floating-composer"
       style={{
         position: "relative",
         width: "100%",
@@ -198,6 +274,7 @@ export const Composer: React.FC<ComposerProps> = ({
             zIndex: 10,
             backgroundColor: "rgba(248, 248, 246, 0.9)",
             border: "2px dashed var(--swiss-accent)",
+            borderRadius: "12px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -216,7 +293,7 @@ export const Composer: React.FC<ComposerProps> = ({
       {errorMessage && (
         <div
           style={{
-            marginBottom: "8px",
+            margin: "8px 12px",
             padding: "6px 12px",
             backgroundColor: "#FEE2E2",
             borderLeft: "2px solid var(--swiss-accent)",
@@ -241,9 +318,9 @@ export const Composer: React.FC<ComposerProps> = ({
         drawer={drawerContent}
         footerActions={footerActionsContent}
         style={{
-          border: "1px solid var(--swiss-border)",
-          backgroundColor: "var(--swiss-surface)",
-          borderRadius: "0px",
+          border: "none",
+          backgroundColor: "transparent",
+          borderRadius: "12px",
         }}
       />
     </div>

@@ -11,6 +11,7 @@ import {
   Moon,
   ChevronLeft,
   ChevronRight,
+  Settings,
 } from "lucide-react";
 import {
   useConversations,
@@ -30,6 +31,7 @@ export interface SidebarProps {
   onToggleTheme: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  onOpenSettings: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -40,6 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleTheme,
   isCollapsed,
   onToggleCollapse,
+  onOpenSettings,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [renamingConv, setRenamingConv] = useState<Conversation | null>(null);
@@ -92,6 +95,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+          <IconButton
+            icon={<Settings size={16} />}
+            label="Workbench Settings"
+            variant="ghost"
+            size="sm"
+            onClick={onOpenSettings}
+          />
+
           <IconButton
             icon={themeMode === "light" ? <Moon size={16} /> : <Sun size={16} />}
             label="Toggle Theme"
@@ -387,29 +398,64 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </ScrollableArea>
       </div>
 
-      {/* Footer Controls */}
+      {/* Pinned Bottom Settings & Controls */}
       <div
         style={{
-          padding: "12px 16px",
           borderTop: "1px solid var(--swiss-border)",
+          backgroundColor: "var(--swiss-surface)",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          fontSize: "11px",
-          color: "var(--swiss-text-secondary)",
+          flexDirection: "column",
         }}
       >
-        <span style={{ letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600 }}>
-          {conversations.length} {conversations.length === 1 ? "Thread" : "Threads"}
-        </span>
+        {/* Settings Action Button */}
+        <div
+          onClick={onOpenSettings}
+          style={{
+            padding: "10px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            cursor: "pointer",
+            borderBottom: "1px solid var(--swiss-border)",
+            fontSize: "12px",
+            fontWeight: 500,
+            color: "var(--swiss-text)",
+            transition: "background-color 120ms ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "var(--swiss-hover)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "transparent";
+          }}
+        >
+          <Settings size={15} style={{ color: "var(--swiss-text-secondary)" }} />
+          <span>Workbench Settings</span>
+        </div>
 
-        <IconButton
-          icon={themeMode === "light" ? <Moon size={14} /> : <Sun size={14} />}
-          label={themeMode === "light" ? "Switch to Dark Mode" : "Switch to Light Mode"}
-          variant="ghost"
-          size="sm"
-          onClick={onToggleTheme}
-        />
+        {/* Footer Meta & Quick Toggle */}
+        <div
+          style={{
+            padding: "8px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontSize: "11px",
+            color: "var(--swiss-text-secondary)",
+          }}
+        >
+          <span style={{ letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600 }}>
+            {conversations.length} {conversations.length === 1 ? "Thread" : "Threads"}
+          </span>
+
+          <IconButton
+            icon={themeMode === "light" ? <Moon size={14} /> : <Sun size={14} />}
+            label={themeMode === "light" ? "Switch to Dark Mode" : "Switch to Light Mode"}
+            variant="ghost"
+            size="sm"
+            onClick={onToggleTheme}
+          />
+        </div>
       </div>
 
       {/* Dialogs */}

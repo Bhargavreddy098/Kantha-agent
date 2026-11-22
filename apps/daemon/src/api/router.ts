@@ -36,7 +36,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
 
   const isDev =
     options.devOriginAllowed ??
-    (process.env.NODE_ENV === "development" ||
+    (process.env.NODE_ENV !== "production" ||
       process.env.KANTHA_DEV_PROXY === "true");
 
   // In-memory authentication components per ADR-007

@@ -92,19 +92,11 @@ export async function handleChatStreamRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
-  const defaultModel = process.env.OPENAI_MODEL || "gpt-4o";
-
-  if (!apiKey) {
-    res.writeHead(503, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        error: "OPENAI_API_KEY is not configured on the local daemon environment.",
-      })
-    );
-    return;
-  }
+  const openAiApiKey = process.env.OPENAI_API_KEY;
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+  const openAiBaseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const ollamaBaseUrl = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1").replace(/\/+$/, "");
+  const defaultModel = process.env.OPENAI_MODEL || (openAiApiKey ? "gpt-4o" : "llama3.2");
 
   let body = "";
   req.on("data", (chunk) => {
@@ -117,11 +109,42 @@ export async function handleChatStreamRequest(
       const rawMessages: ChatMessagePayload[] = Array.isArray(payload.messages)
         ? payload.messages
         : [];
-      const model = payload.model || defaultModel;
+      const requestedModel = (payload.model || defaultModel).trim();
 
       if (rawMessages.length === 0) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Missing or empty messages array." }));
+        return;
+      }
+
+      // Determine upstream endpoint, model ID, and authorization
+      let upstreamUrl = `${openAiBaseUrl}/chat/completions`;
+      let targetApiKey = openAiApiKey;
+      let targetModel = requestedModel;
+
+      const isOllama =
+        requestedModel.startsWith("ollama:") ||
+        ["llama3.2", "deepseek-r1", "qwen2.5-coder"].includes(requestedModel);
+
+      if (isOllama) {
+        upstreamUrl = `${ollamaBaseUrl}/chat/completions`;
+        targetApiKey = process.env.OLLAMA_API_KEY || "ollama";
+        targetModel = requestedModel.replace(/^ollama:/, "");
+      } else if (requestedModel.startsWith("anthropic:")) {
+        targetModel = requestedModel.replace(/^anthropic:/, "");
+        targetApiKey = anthropicApiKey || openAiApiKey;
+      } else if (requestedModel.startsWith("openai:")) {
+        targetModel = requestedModel.replace(/^openai:/, "");
+      }
+
+      if (!targetApiKey && !isOllama) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error:
+              "API key is not configured for the requested model provider. Please configure OPENAI_API_KEY, ANTHROPIC_API_KEY, or switch to a local Ollama model in Settings.",
+          })
+        );
         return;
       }
 
@@ -135,15 +158,14 @@ export async function handleChatStreamRequest(
         abortController.abort();
       });
 
-      const upstreamUrl = `${baseUrl}/chat/completions`;
       const upstreamResponse = await fetch(upstreamUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${targetApiKey}`,
         },
         body: JSON.stringify({
-          model,
+          model: targetModel,
           messages: sanitizedMessages,
           stream: true,
         }),

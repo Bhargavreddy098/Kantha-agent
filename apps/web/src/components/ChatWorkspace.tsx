@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
-import { AppShell, ChatLayout, ChatMessageList } from "@astryxdesign/core";
+import { AppShell, ChatLayout, ChatMessageList, IconButton } from "@astryxdesign/core";
+import { Settings } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Sidebar } from "./Sidebar";
 import { WelcomeScreen } from "./WelcomeScreen";
 import { MessageItem } from "./MessageItem";
 import { Composer } from "./Composer";
+import { SettingsDialog, type ProvidersResponse } from "./SettingsDialog";
 import {
   useConversations,
   useMessages,
@@ -13,8 +16,8 @@ import {
   updateMessage,
   generateConversationTitle,
 } from "../db/useChatHistory";
+import { chatDb, type StoredMessage, type StoredAttachment } from "../db/chatDb";
 import { streamChatResponse } from "../services/chatStreamService";
-import type { StoredMessage, StoredAttachment } from "../db/chatDb";
 
 export const ChatWorkspace: React.FC = () => {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -24,12 +27,18 @@ export const ChatWorkspace: React.FC = () => {
   const [activeAssistantMsgId, setActiveAssistantMsgId] = useState<string | null>(null);
   const [modelStatus, setModelStatus] = useState<string>("Connecting...");
   const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [providersData, setProvidersData] = useState<ProvidersResponse | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    return localStorage.getItem("kantha_selected_model") || "openai:gpt-4o";
+  });
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const conversations = useConversations();
   const messages = useMessages(activeConversationId);
+  const allMessageCount = useLiveQuery(() => chatDb.messages.count()) || 0;
 
   // Apply theme data attribute to document body
   useEffect(() => {
@@ -44,10 +53,13 @@ export const ChatWorkspace: React.FC = () => {
         if (!res.ok) throw new Error("Offline");
         return res.json();
       })
-      .then((data) => {
+      .then((data: ProvidersResponse) => {
         setIsOnline(true);
-        const model = data.defaultModel || "GPT-4o";
-        setModelStatus(`Connected: ${model}`);
+        setProvidersData(data);
+        const saved = localStorage.getItem("kantha_selected_model");
+        const activeModel = saved || data.defaultModel || "openai:gpt-4o";
+        setSelectedModel(activeModel);
+        setModelStatus(`Connected: ${activeModel.split(":").pop()}`);
       })
       .catch(() => {
         setIsOnline(false);
@@ -68,6 +80,18 @@ export const ChatWorkspace: React.FC = () => {
 
   const handleToggleTheme = () => {
     setThemeMode((prev) => (prev === "light" ? "dark" : "light"));
+  };
+
+  const handleSelectModel = (modelId: string) => {
+    setSelectedModel(modelId);
+    localStorage.setItem("kantha_selected_model", modelId);
+    setModelStatus(`Connected: ${modelId.split(":").pop()}`);
+  };
+
+  const handleClearAllHistory = async () => {
+    await chatDb.messages.clear();
+    await chatDb.conversations.clear();
+    setActiveConversationId(null);
   };
 
   const handleNewChat = async () => {
@@ -134,6 +158,7 @@ export const ChatWorkspace: React.FC = () => {
 
     await streamChatResponse({
       messages: fullHistory,
+      model: selectedModel,
       signal: abortController.signal,
       onToken: async (delta) => {
         accumulatedContent += delta;
@@ -204,6 +229,7 @@ export const ChatWorkspace: React.FC = () => {
           onToggleTheme={handleToggleTheme}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
         />
       }
       topNav={
@@ -231,27 +257,37 @@ export const ChatWorkspace: React.FC = () => {
             </span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span
-              style={{
-                display: "inline-block",
-                width: "7px",
-                height: "7px",
-                borderRadius: "50%",
-                backgroundColor: isOnline ? "#10B981" : "var(--swiss-accent)",
-              }}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  width: "7px",
+                  height: "7px",
+                  borderRadius: "50%",
+                  backgroundColor: isOnline ? "#10B981" : "var(--swiss-accent)",
+                }}
+              />
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "var(--swiss-text-secondary)",
+                }}
+              >
+                {modelStatus}
+              </span>
+            </div>
+
+            <IconButton
+              icon={<Settings size={15} />}
+              label="Settings"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsSettingsOpen(true)}
             />
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                color: "var(--swiss-text-secondary)",
-              }}
-            >
-              {modelStatus}
-            </span>
           </div>
         </div>
       }
@@ -273,6 +309,9 @@ export const ChatWorkspace: React.FC = () => {
               onSubmit={handleSendMessage}
               onStop={handleStopGeneration}
               isGenerating={isGenerating}
+              selectedModel={selectedModel}
+              onSelectModel={handleSelectModel}
+              providersData={providersData}
             />
           }
         >
@@ -301,6 +340,21 @@ export const ChatWorkspace: React.FC = () => {
           )}
         </ChatLayout>
       </div>
+
+      {/* Workbench Settings Modal Dialog */}
+      <SettingsDialog
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        themeMode={themeMode}
+        onToggleTheme={handleToggleTheme}
+        selectedModel={selectedModel}
+        onSelectModel={handleSelectModel}
+        providersData={providersData}
+        onClearHistory={handleClearAllHistory}
+        conversationCount={conversations.length}
+        messageCount={allMessageCount}
+        isDaemonOnline={isOnline}
+      />
     </AppShell>
   );
 };

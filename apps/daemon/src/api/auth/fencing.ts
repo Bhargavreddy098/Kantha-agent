@@ -1,6 +1,7 @@
 export interface FencingOptions {
   port: number;
   devOriginAllowed?: boolean;
+  allowedOrigins?: string[];
 }
 
 export class IngressFencing {
@@ -25,16 +26,47 @@ export class IngressFencing {
       `http://localhost:${this.port}`,
     ]);
 
+    // Explicitly allowed origins via options
+    if (options.allowedOrigins && Array.isArray(options.allowedOrigins)) {
+      for (const origin of options.allowedOrigins) {
+        if (origin) {
+          const norm = origin.trim().toLowerCase();
+          this.allowedOrigins.add(norm);
+          try {
+            const parsed = new URL(norm);
+            this.allowedHosts.add(parsed.host);
+          } catch {
+            // ignore malformed custom origin
+          }
+        }
+      }
+    }
+
+    // Support KANTHA_ALLOWED_ORIGINS environment variable
+    if (typeof process !== "undefined" && process.env?.KANTHA_ALLOWED_ORIGINS) {
+      const envOrigins = process.env.KANTHA_ALLOWED_ORIGINS.split(",").map((s) => s.trim().toLowerCase());
+      for (const o of envOrigins) {
+        if (o) {
+          this.allowedOrigins.add(o);
+          try {
+            const parsed = new URL(o);
+            this.allowedHosts.add(parsed.host);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+
     if (this.devOriginAllowed) {
-      // Explicitly configured development hosts and origins (Vite dev servers on port 3000 or 5173)
-      this.allowedHosts.add("127.0.0.1:3000");
-      this.allowedHosts.add("localhost:3000");
-      this.allowedHosts.add("127.0.0.1:5173");
-      this.allowedHosts.add("localhost:5173");
-      this.allowedOrigins.add("http://127.0.0.1:5173");
-      this.allowedOrigins.add("http://localhost:5173");
-      this.allowedOrigins.add("http://127.0.0.1:3000");
-      this.allowedOrigins.add("http://localhost:3000");
+      // Explicitly configured development hosts and origins (Vite dev servers on port 3000-3010, 5173-5180, 4173)
+      const devPorts = [3000, 3001, 3002, 5173, 5174, 5175, 5176, 4173];
+      for (const p of devPorts) {
+        this.allowedHosts.add(`127.0.0.1:${p}`);
+        this.allowedHosts.add(`localhost:${p}`);
+        this.allowedOrigins.add(`http://127.0.0.1:${p}`);
+        this.allowedOrigins.add(`http://localhost:${p}`);
+      }
     }
   }
 

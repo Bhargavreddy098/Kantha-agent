@@ -1,4 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "@astryxdesign/theme-neutral/theme.css";
+@import "@astryxdesign/core/astryx.css";
 
 :root {
   --swiss-bg: #F8F8F6;
@@ -14,6 +16,7 @@
   --_chat-layout-bg: var(--swiss-bg);
   --_chat-composer-bg: var(--swiss-surface);
   --_chat-composer-border: var(--swiss-border);
+  --_chat-composer-radius: 12px;
 
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.5;
@@ -37,6 +40,7 @@
   --_chat-layout-bg: var(--swiss-bg);
   --_chat-composer-bg: var(--swiss-surface);
   --_chat-composer-border: var(--swiss-border);
+  --_chat-composer-radius: 12px;
 
   color-scheme: dark;
 }
@@ -71,6 +75,71 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--swiss-text-secondary);
+}
+
+/* Normalize inputs and eliminate browser-default clumsiness */
+textarea, input {
+  font-family: inherit;
+}
+
+textarea {
+  resize: none !important;
+}
+
+/* Astryx ChatComposer customization to prevent nested ugly borders */
+[data-astryx-composer] {
+  border-radius: 12px !important;
+  background-color: var(--swiss-surface) !important;
+}
+
+[data-astryx-composer] textarea {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Swiss Floating Composer */
+.swiss-floating-composer {
+  border-radius: 12px;
+  background-color: var(--swiss-surface);
+  border: 1px solid var(--swiss-border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+[data-theme='dark'] .swiss-floating-composer {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+.swiss-floating-composer:focus-within {
+  border-color: var(--swiss-text);
+}
+
+/* Floating model selector pill button */
+.swiss-model-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  background-color: var(--swiss-hover);
+  color: var(--swiss-text);
+  border: 1px solid var(--swiss-border);
+  cursor: pointer;
+  transition: all 120ms ease;
+  user-select: none;
+}
+
+.swiss-model-pill:hover {
+  background-color: var(--swiss-border);
+}
+
+/* Native dialog backdrop styling */
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
 }
 
 /* Restrained transitions */
