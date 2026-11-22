@@ -275,25 +275,36 @@ export async function handleChatStreamRequest(
             if (typeof (res as any).flushHeaders === "function") {
               (res as any).flushHeaders();
             }
+            res.write(": connected\n\n");
 
-            yield* Stream.runForEach(stream, (delta) =>
-              Effect.sync(() => {
-                if (res.writableEnded) return;
-                if (delta.text) {
-                  res.write(formatSseEvent({ content: delta.text, reasoning: "" }));
-                }
-                if (delta.reasonings && delta.reasonings.length > 0) {
-                  for (const r of delta.reasonings) {
-                    if (r.text) {
-                      res.write(formatSseEvent({ content: "", reasoning: r.text }));
+            const heartbeat = setInterval(() => {
+              if (!res.writableEnded) {
+                res.write(": ping\n\n");
+              }
+            }, 15_000);
+
+            try {
+              yield* Stream.runForEach(stream, (delta) =>
+                Effect.sync(() => {
+                  if (res.writableEnded) return;
+                  if (delta.text) {
+                    res.write(formatSseEvent({ content: delta.text, reasoning: "" }));
+                  }
+                  if (delta.reasonings && delta.reasonings.length > 0) {
+                    for (const r of delta.reasonings) {
+                      if (r.text) {
+                        res.write(formatSseEvent({ content: "", reasoning: r.text }));
+                      }
                     }
                   }
-                }
-              })
-            );
+                })
+              );
 
-            if (!res.writableEnded) {
-              res.write(formatSseEvent("[DONE]"));
+              if (!res.writableEnded) {
+                res.write(formatSseEvent("[DONE]"));
+              }
+            } finally {
+              clearInterval(heartbeat);
             }
           })
         ).pipe(
@@ -360,25 +371,39 @@ export async function handleChatStreamRequest(
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       });
+      if (typeof (res as any).flushHeaders === "function") {
+        (res as any).flushHeaders();
+      }
+      res.write(": connected\n\n");
 
-      for await (const part of result.fullStream) {
-        if (res.writableEnded) break;
-
-        const partType = (part as any).type;
-        if (partType === "text-delta") {
-          const text = (part as any).text ?? (part as any).textDelta ?? "";
-          if (text) {
-            res.write(formatSseEvent({ content: text, reasoning: "" }));
-          }
-        } else if (partType === "reasoning-delta" || partType === "reasoning") {
-          const text = (part as any).text ?? (part as any).textDelta ?? "";
-          if (text) {
-            res.write(formatSseEvent({ content: "", reasoning: text }));
-          }
-        } else if (partType === "error") {
-          const errMsg = (part as any).error?.message || "Stream error";
-          res.write(formatSseEvent({ content: `\n\n[Error: ${errMsg}]`, reasoning: "" }));
+      const fallbackHeartbeat = setInterval(() => {
+        if (!res.writableEnded) {
+          res.write(": ping\n\n");
         }
+      }, 15_000);
+
+      try {
+        for await (const part of result.fullStream) {
+          if (res.writableEnded) break;
+
+          const partType = (part as any).type;
+          if (partType === "text-delta") {
+            const text = (part as any).text ?? (part as any).textDelta ?? "";
+            if (text) {
+              res.write(formatSseEvent({ content: text, reasoning: "" }));
+            }
+          } else if (partType === "reasoning-delta" || partType === "reasoning") {
+            const text = (part as any).text ?? (part as any).textDelta ?? "";
+            if (text) {
+              res.write(formatSseEvent({ content: "", reasoning: text }));
+            }
+          } else if (partType === "error") {
+            const errMsg = (part as any).error?.message || "Stream error";
+            res.write(formatSseEvent({ content: `\n\n[Error: ${errMsg}]`, reasoning: "" }));
+          }
+        }
+      } finally {
+        clearInterval(fallbackHeartbeat);
       }
 
       if (!res.writableEnded) {

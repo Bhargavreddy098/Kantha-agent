@@ -34,7 +34,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
     options.dataDir ||
     process.env.KANTHA_DATA_DIR ||
     path.resolve(workspacePath, ".kantha-data");
-  const { db } = await createKanthaDb({ dbPath: options.dbPath });
+  const { db } = await createKanthaDb({ dbPath: options.dbPath || path.join(dataDir, "kantha.sqlite") });
 
   const isDev =
     options.devOriginAllowed ??

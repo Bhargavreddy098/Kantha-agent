@@ -6,7 +6,7 @@ import path from "node:path";
 
 async function main() {
   console.log("=== Starting Live Gateway Upstream Probe ===");
-  const dataDir = path.resolve(process.cwd(), "../../.kantha-data");
+  const dataDir = path.resolve(process.cwd(), ".kantha-data");
   const { db, sqlite } = await createKanthaDb({ dbPath: path.join(dataDir, "kantha.sqlite") });
 
   const daemonLayer = createDaemonGatewayLayer({ db, dataDir });
