@@ -14,6 +14,7 @@ import {
   CliCredentialManager,
   IngressFencing,
 } from "./auth";
+import { handleChatStreamRequest } from "./chat";
 
 export interface DaemonServerOptions {
   port?: number;
@@ -388,6 +389,12 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
     if (pathname === "/api/providers" && req.method === "GET") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(discoverProviders()));
+      return;
+    }
+
+    // OpenAI-compatible Chat Streaming with Reasoning Separation
+    if (pathname === "/api/chat/stream" && req.method === "POST") {
+      await handleChatStreamRequest(req, res);
       return;
     }
 
