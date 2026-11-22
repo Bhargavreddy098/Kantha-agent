@@ -254,43 +254,60 @@ export class ProviderRegistry {
     };
   }
 
-  public getProviderForModel(requestedModel: string): { provider: ProviderConfig; modelId: string } | null {
+  public getProviderForModel(
+    requestedModel: string,
+    explicitProviderId?: string
+  ): { provider: ProviderConfig; modelId: string } | null {
     const all = this.getAll();
-    let providerId: string | undefined;
-    let targetModelId = requestedModel.trim();
+    const trimmedModel = requestedModel.trim();
 
-    if (requestedModel.includes(":")) {
-      const parts = requestedModel.split(":");
-      providerId = parts[0];
-      targetModelId = parts.slice(1).join(":");
-    }
-
-    if (providerId) {
-      const match = all.find((p) => p.id === providerId);
+    // 1. Explicit provider ID takes precedence
+    if (explicitProviderId) {
+      const match = all.find((p) => p.id === explicitProviderId);
       if (match) {
-        return { provider: match, modelId: targetModelId };
+        // Strip provider prefix if caller passed "providerId:modelId"
+        const cleanModelId = trimmedModel.startsWith(`${explicitProviderId}:`)
+          ? trimmedModel.slice(explicitProviderId.length + 1)
+          : trimmedModel;
+        return { provider: match, modelId: cleanModelId };
       }
+      return null;
     }
 
-    // Try finding by model id directly in all providers
+    // 2. Check if requestedModel starts with a known provider ID prefix
     for (const p of all) {
-      const modelMatch = p.models.find((m) => m.id === targetModelId);
-      if (modelMatch) {
-        return { provider: p, modelId: targetModelId };
+      if (trimmedModel.startsWith(`${p.id}:`)) {
+        return {
+          provider: p,
+          modelId: trimmedModel.slice(p.id.length + 1),
+        };
       }
     }
 
-    // Fallback to OpenAI if no prefix or Ollama if recognized local model
-    if (["llama3.2", "deepseek-r1", "qwen2.5-coder"].includes(targetModelId)) {
+    // 3. Search all providers for an exact match on model ID (supports colon models like "hy4-flash:free")
+    const matchingProviders = all.filter((p) =>
+      p.models.some((m) => m.id === trimmedModel)
+    );
+
+    if (matchingProviders.length === 1) {
+      return { provider: matchingProviders[0], modelId: trimmedModel };
+    }
+
+    if (matchingProviders.length > 1) {
+      throw new Error(
+        `Ambiguous model '${trimmedModel}' exists in multiple providers (${matchingProviders
+          .map((p) => p.name)
+          .join(", ")}). Please specify the provider explicitly.`
+      );
+    }
+
+    // 4. Recognized Ollama local model shortcuts
+    if (["llama3.2", "deepseek-r1", "qwen2.5-coder"].includes(trimmedModel)) {
       const ollama = all.find((p) => p.id === "ollama");
-      if (ollama) return { provider: ollama, modelId: targetModelId };
+      if (ollama) return { provider: ollama, modelId: trimmedModel };
     }
 
-    const defaultProvider = all.find((p) => p.id === "openai") || all[0];
-    if (defaultProvider) {
-      return { provider: defaultProvider, modelId: targetModelId };
-    }
-
+    // 5. Fail-closed: Never silently fall back to OpenAI with dummy credentials
     return null;
   }
 

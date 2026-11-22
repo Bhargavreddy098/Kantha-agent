@@ -102,4 +102,81 @@ describe("ProviderRegistry Service", () => {
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  it("should resolve colon-containing model IDs to the correct provider without splitting error", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kantha-reg-test-"));
+    const registry = new ProviderRegistry({ dataDir: tmpDir });
+    registry.upsertCustom({
+      id: "cent_ai",
+      name: "Cent AI",
+      type: "openai_compatible",
+      baseURL: "https://api.cent-ai.dev/v1",
+      models: [{ id: "hy4-flash:free", name: "HY4 Flash Free" }],
+    });
+
+    // Unprefixed colon-delimited model ID
+    const res1 = registry.getProviderForModel("hy4-flash:free");
+    assert.ok(res1, "should resolve unprefixed colon model");
+    assert.equal(res1.provider.id, "cent_ai");
+    assert.equal(res1.modelId, "hy4-flash:free");
+
+    // Prefixed colon-delimited model ID (provider_id:model:id)
+    const res2 = registry.getProviderForModel("cent_ai:hy4-flash:free");
+    assert.ok(res2, "should resolve prefixed colon model");
+    assert.equal(res2.provider.id, "cent_ai");
+    assert.equal(res2.modelId, "hy4-flash:free");
+
+    // Structured resolution with explicit providerId
+    const res3 = registry.getProviderForModel("hy4-flash:free", "cent_ai");
+    assert.ok(res3, "should resolve structured providerId and modelId");
+    assert.equal(res3.provider.id, "cent_ai");
+    assert.equal(res3.modelId, "hy4-flash:free");
+
+    // Completely unknown model must return null and never fallback to OpenAI
+    const unknown = registry.getProviderForModel("completely-unknown-model-xyz");
+    assert.equal(unknown, null, "unknown model must return null and not fallback to OpenAI");
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("should handle ambiguous model IDs across multiple providers safely", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kantha-reg-test-"));
+    const registry = new ProviderRegistry({ dataDir: tmpDir });
+    registry.upsertCustom({
+      id: "provider_a",
+      name: "Provider A",
+      type: "openai_compatible",
+      baseURL: "https://api.a.com/v1",
+      models: [{ id: "shared-model-1", name: "Shared Model" }],
+    });
+    registry.upsertCustom({
+      id: "provider_b",
+      name: "Provider B",
+      type: "openai_compatible",
+      baseURL: "https://api.b.com/v1",
+      models: [{ id: "shared-model-1", name: "Shared Model" }],
+    });
+
+    // With explicit provider, resolves cleanly
+    const resA = registry.getProviderForModel("shared-model-1", "provider_a");
+    assert.ok(resA);
+    assert.equal(resA.provider.id, "provider_a");
+
+    const resB = registry.getProviderForModel("shared-model-1", "provider_b");
+    assert.ok(resB);
+    assert.equal(resB.provider.id, "provider_b");
+
+    // With provider prefix, resolves cleanly
+    const resPrefixed = registry.getProviderForModel("provider_a:shared-model-1");
+    assert.ok(resPrefixed);
+    assert.equal(resPrefixed.provider.id, "provider_a");
+
+    // Without explicit provider and ambiguous across providers, throws clear ambiguity error
+    assert.throws(
+      () => registry.getProviderForModel("shared-model-1"),
+      /Ambiguous model 'shared-model-1'/
+    );
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 });

@@ -199,14 +199,33 @@ export async function handleChatStreamRequest(
 
       // Resolve provider from registry or fallback built-ins
       const registry = context?.providerRegistry;
-      const requestedModel = typeof payload.model === "string" && payload.model.trim()
-        ? payload.model.trim()
-        : registry?.getDefaultModel() || "openai:gpt-4o";
+      const explicitProviderId =
+        typeof payload.providerId === "string" && payload.providerId.trim()
+          ? payload.providerId.trim()
+          : undefined;
+      const requestedModel =
+        typeof payload.model === "string" && payload.model.trim()
+          ? payload.model.trim()
+          : registry?.getDefaultModel() || "openai:gpt-4o";
 
-      const resolution = registry?.getProviderForModel(requestedModel);
+      let resolution: { provider: ProviderConfig; modelId: string } | null = null;
+      try {
+        resolution = registry
+          ? registry.getProviderForModel(requestedModel, explicitProviderId)
+          : null;
+      } catch (err: any) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err.message }));
+        return;
+      }
+
       if (!resolution) {
         res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: `Unknown model or provider: ${requestedModel}` }));
+        res.end(
+          JSON.stringify({
+            error: `Unknown model or provider: '${requestedModel}'. Please check your configured providers in Settings.`,
+          })
+        );
         return;
       }
 
@@ -236,6 +255,7 @@ export async function handleChatStreamRequest(
       const result = streamText({
         model: languageModel,
         messages: coreMessages,
+        maxRetries: 0,
         abortSignal: abortController.signal,
       });
 
