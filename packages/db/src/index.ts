@@ -94,19 +94,12 @@ export async function createKanthaDb(options: KanthaDbOptions = {}) {
     sqlite.exec("PRAGMA busy_timeout = 5000;");
     sqlite.exec(DDL_SCHEMA);
     db = drizzle(sqlite, { schema });
-  } else {
-    // Node.js fallback using node:sqlite
-    try {
-      const { DatabaseSync } = await import("node:sqlite");
-      sqlite = sqlite || new DatabaseSync(dbPath);
-      sqlite.exec("PRAGMA journal_mode = WAL;");
-      sqlite.exec("PRAGMA synchronous = NORMAL;");
-      sqlite.exec("PRAGMA foreign_keys = ON;");
-      sqlite.exec("PRAGMA busy_timeout = 5000;");
-      sqlite.exec(DDL_SCHEMA);
-    } catch {
-      // In-memory or mock
-    }
+  }
+
+  if (!db) {
+    throw new Error(
+      "Failed to initialize Kantha database: SQLite database driver could not be loaded. Please ensure you are running under Bun runtime (bun run or bun --watch)."
+    );
   }
 
   return { db, sqlite, dbPath };
