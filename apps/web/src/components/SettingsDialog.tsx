@@ -62,8 +62,10 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   const [providerType, setProviderType] = useState<SanitizedProviderItem["type"]>("openai_compatible");
   const [baseURL, setBaseURL] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [modelName, setModelName] = useState("");
+  const [configuredModels, setConfiguredModels] = useState<Array<{ id: string; name: string; capabilities?: { reasoning?: boolean; vision?: boolean; streaming?: boolean } }>>([]);
+  const [manualModelId, setManualModelId] = useState("");
+  const [manualModelName, setManualModelName] = useState("");
+  const [showManualAdd, setShowManualAdd] = useState(false);
   const [hasReasoning, setHasReasoning] = useState(false);
   const [hasVision, setHasVision] = useState(false);
   const [customHeadersJson, setCustomHeadersJson] = useState("");
@@ -83,8 +85,10 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setProviderType("openai_compatible");
     setBaseURL("");
     setApiKey("");
-    setModelId("");
-    setModelName("");
+    setConfiguredModels([]);
+    setManualModelId("");
+    setManualModelName("");
+    setShowManualAdd(false);
     setHasReasoning(false);
     setHasVision(false);
     setCustomHeadersJson("");
@@ -99,14 +103,16 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setProviderType(provider.type);
     setBaseURL(provider.baseURL || "");
     setApiKey(""); // Keep blank to preserve existing key
+    setConfiguredModels(provider.models || []);
+    setDiscoveredModels((provider.models || []).map((m) => ({ id: m.id, name: m.name })));
+    setManualModelId("");
+    setManualModelName("");
+    setShowManualAdd(false);
     const firstModel = provider.models[0];
-    setModelId(firstModel?.id || "");
-    setModelName(firstModel?.name || "");
     setHasReasoning(Boolean(firstModel?.capabilities?.reasoning));
     setHasVision(Boolean(firstModel?.capabilities?.vision));
     setCustomHeadersJson(provider.headers ? JSON.stringify(provider.headers, null, 2) : "");
     setTestResult(null);
-    setDiscoveredModels([]);
     setProviderFormError(null);
     setIsAddingProvider(true);
   };
@@ -144,7 +150,6 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
   const handleDiscoverModels = async () => {
     setIsDiscovering(true);
-    setDiscoveredModels([]);
     setProviderFormError(null);
 
     let parsedHeaders: Record<string, string> | undefined;
@@ -166,10 +171,29 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       });
       if (res.models && res.models.length > 0) {
         setDiscoveredModels(res.models);
+        const newModels = res.models.map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          capabilities: {
+            reasoning:
+              m.id.toLowerCase().includes("r1") ||
+              m.id.toLowerCase().includes("reason") ||
+              m.id.toLowerCase().includes("think") ||
+              m.id.toLowerCase().includes("hy4"),
+            vision:
+              m.id.toLowerCase().includes("vision") ||
+              m.id.toLowerCase().includes("image") ||
+              m.id.toLowerCase().includes("4o"),
+            streaming: true,
+          },
+        }));
+        setConfiguredModels(newModels);
       } else if (res.error) {
         setProviderFormError(res.error);
       } else {
-        setProviderFormError("No models discovered from the endpoint. You can enter the Model ID manually below.");
+        setProviderFormError(
+          "No models discovered from endpoint. You can add models manually using the fallback below."
+        );
       }
     } catch (err: any) {
       setProviderFormError(err.message || "Model discovery failed.");
@@ -178,13 +202,61 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     }
   };
 
+  const handleAddManualModel = () => {
+    if (!manualModelId.trim()) {
+      setProviderFormError("Please enter a Model ID.");
+      return;
+    }
+    const cleanId = manualModelId.trim();
+    if (configuredModels.some((m) => m.id === cleanId)) {
+      setProviderFormError(`Model '${cleanId}' is already in the list.`);
+      return;
+    }
+    const addedModel = {
+      id: cleanId,
+      name: manualModelName.trim() || cleanId,
+      capabilities: {
+        reasoning: hasReasoning,
+        vision: hasVision,
+        streaming: true,
+      },
+    };
+    setConfiguredModels((prev) => [...prev, addedModel]);
+    setManualModelId("");
+    setManualModelName("");
+    setProviderFormError(null);
+  };
+
+  const handleRemoveModel = (idToRemove: string) => {
+    setConfiguredModels((prev) => prev.filter((m) => m.id !== idToRemove));
+  };
+
   const handleSaveCustomProvider = async () => {
     if (!providerName.trim()) {
       setProviderFormError("Provider display name is required.");
       return;
     }
-    if (!modelId.trim()) {
-      setProviderFormError("At least one Model ID is required.");
+
+    let finalModels = [...configuredModels];
+    if (manualModelId.trim()) {
+      const cleanId = manualModelId.trim();
+      if (!finalModels.some((m) => m.id === cleanId)) {
+        finalModels.push({
+          id: cleanId,
+          name: manualModelName.trim() || cleanId,
+          capabilities: {
+            reasoning: hasReasoning,
+            vision: hasVision,
+            streaming: true,
+          },
+        });
+      }
+    }
+
+    if (finalModels.length === 0) {
+      setProviderFormError(
+        "Please click 'Discover Models' or add at least one model manually before saving."
+      );
       return;
     }
 
@@ -209,17 +281,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         baseURL: baseURL.trim() || undefined,
         apiKey: apiKey.trim() || undefined,
         headers: parsedHeaders,
-        models: [
-          {
-            id: modelId.trim(),
-            name: (modelName.trim() || modelId.trim()),
-            capabilities: {
-              reasoning: hasReasoning,
-              vision: hasVision,
-              streaming: true,
-            },
-          },
-        ],
+        models: finalModels,
       });
       resetCustomProviderForm();
       onProvidersUpdated?.();
@@ -572,82 +634,141 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                       )}
                     </div>
 
-                    {/* Discovered Models Dropdown */}
-                    {discoveredModels.length > 0 && (
-                      <div style={{ marginBottom: "12px", padding: "8px 12px", backgroundColor: "var(--swiss-surface)", border: "1px solid var(--swiss-border)" }}>
-                        <div style={{ fontSize: "11px", fontWeight: 600, marginBottom: "4px", color: "var(--swiss-text-secondary)" }}>
-                          Discovered Models (Click to use):
+                    {/* Discovered / Configured Models List */}
+                    {configuredModels.length > 0 && (
+                      <div style={{ marginBottom: "12px", padding: "10px 12px", backgroundColor: "var(--swiss-surface)", border: "1px solid var(--swiss-border)", borderRadius: "4px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--swiss-text)" }}>
+                            Available Models ({configuredModels.length}) — Will be saved:
+                          </span>
+                          <span style={{ fontSize: "10px", color: "var(--swiss-text-secondary)" }}>
+                            Click × to remove any
+                          </span>
                         </div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                          {discoveredModels.slice(0, 10).map((m) => (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", maxHeight: "180px", overflowY: "auto", paddingRight: "4px" }}>
+                          {configuredModels.map((m) => (
                             <span
                               key={m.id}
-                              onClick={() => {
-                                setModelId(m.id);
-                                setModelName(m.name);
-                              }}
                               style={{
-                                padding: "2px 8px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                padding: "3px 8px",
                                 fontSize: "11px",
-                                backgroundColor: modelId === m.id ? "var(--swiss-accent)" : "var(--swiss-bg)",
-                                color: modelId === m.id ? "#FFFFFF" : "var(--swiss-text)",
+                                backgroundColor: "var(--swiss-bg)",
+                                color: "var(--swiss-text)",
                                 border: "1px solid var(--swiss-border)",
-                                cursor: "pointer",
+                                borderRadius: "3px",
                               }}
                             >
-                              {m.id}
+                              <span style={{ fontWeight: 500 }}>{m.id}</span>
+                              {m.name && m.name !== m.id && (
+                                <span style={{ opacity: 0.6, fontSize: "10px" }}>({m.name})</span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveModel(m.id)}
+                                title="Remove model"
+                                style={{
+                                  border: "none",
+                                  background: "none",
+                                  padding: 0,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  color: "var(--swiss-text-secondary)",
+                                }}
+                              >
+                                <X size={11} />
+                              </button>
                             </span>
                           ))}
                         </div>
                       </div>
                     )}
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", marginBottom: "4px" }}>
-                          Model ID *
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. llama-3.3-70b-versatile"
-                          value={modelId}
-                          onChange={(e) => setModelId(e.target.value)}
-                          style={{ width: "100%", padding: "6px 10px", fontSize: "12px", border: "1px solid var(--swiss-border)", backgroundColor: "var(--swiss-surface)", color: "var(--swiss-text)" }}
-                        />
-                      </div>
+                    {/* Optional Fallback: Add Model Manually */}
+                    <div style={{ marginBottom: "14px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowManualAdd(!showManualAdd)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "var(--swiss-accent)",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <Plus size={12} />
+                        <span>{showManualAdd ? "Hide Manual Model Entry" : "Add Model Manually (Optional Fallback)"}</span>
+                      </button>
 
-                      <div>
-                        <label style={{ display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", marginBottom: "4px" }}>
-                          Model Display Name
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Llama 3.3 70B Fast"
-                          value={modelName}
-                          onChange={(e) => setModelName(e.target.value)}
-                          style={{ width: "100%", padding: "6px 10px", fontSize: "12px", border: "1px solid var(--swiss-border)", backgroundColor: "var(--swiss-surface)", color: "var(--swiss-text)" }}
-                        />
-                      </div>
-                    </div>
+                      {showManualAdd && (
+                        <div style={{ marginTop: "8px", padding: "10px", backgroundColor: "var(--swiss-bg)", border: "1px solid var(--swiss-border)", borderRadius: "4px" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "8px" }}>
+                            <div>
+                              <label style={{ display: "block", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>
+                                Model ID *
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. llama-3.3-70b-versatile"
+                                value={manualModelId}
+                                onChange={(e) => setManualModelId(e.target.value)}
+                                style={{ width: "100%", padding: "5px 8px", fontSize: "11px", border: "1px solid var(--swiss-border)", backgroundColor: "var(--swiss-surface)", color: "var(--swiss-text)" }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ display: "block", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>
+                                Model Display Name
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Llama 3.3 70B Fast"
+                                value={manualModelName}
+                                onChange={(e) => setManualModelName(e.target.value)}
+                                style={{ width: "100%", padding: "5px 8px", fontSize: "11px", border: "1px solid var(--swiss-border)", backgroundColor: "var(--swiss-surface)", color: "var(--swiss-text)" }}
+                              />
+                            </div>
+                          </div>
 
-                    {/* Capabilities Checkboxes */}
-                    <div style={{ display: "flex", gap: "16px", marginBottom: "14px", fontSize: "12px" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={hasReasoning}
-                          onChange={(e) => setHasReasoning(e.target.checked)}
-                        />
-                        <span>Reasoning / Thinking Support</span>
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={hasVision}
-                          onChange={(e) => setHasVision(e.target.checked)}
-                        />
-                        <span>Vision (Image Uploads)</span>
-                      </label>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ display: "flex", gap: "12px", fontSize: "11px" }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={hasReasoning}
+                                  onChange={(e) => setHasReasoning(e.target.checked)}
+                                />
+                                <span>Reasoning</span>
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={hasVision}
+                                  onChange={(e) => setHasVision(e.target.checked)}
+                                />
+                                <span>Vision</span>
+                              </label>
+                            </div>
+                            <Button
+                              label="Add to List"
+                              variant="secondary"
+                              size="sm"
+                              onClick={handleAddManualModel}
+                              style={{ fontSize: "11px", padding: "4px 8px" }}
+                            >
+                              Add Model
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
