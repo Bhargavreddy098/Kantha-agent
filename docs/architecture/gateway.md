@@ -17,12 +17,13 @@ The Daemon API Gateway is the communication and control plane of Kantha, hosted 
 
 | Subsystem | Location | Key Responsibilities |
 |---|---|---|
+| **Gateway Core** | `packages/gateway` (`@kantha/gateway`) | Standalone transport-agnostic provider core, native adapters, encrypted BYOK vault, models.dev catalog, SSRF guard, and usage ledger. See [Gateway Core Spec](../superpowers/specs/2026-11-22-gateway-core-design.md). |
 | **HttpApi Router** | `apps/daemon/src/api/router.ts` | Route matching, middleware, CORS, error handling with Effect tagged error channels. |
 | **Session Service** | `apps/daemon/src/api/sessions.ts` | Session CRUD, prompt submission, idempotency check, mapping to local worktree. |
 | **SSE Streaming Hub** | `apps/daemon/src/api/sse.ts` | Multi-subscriber `Effect Stream` streaming assistant reasoning tokens, step markers, and status. |
 | **WebSocket PTY Bridge**| `apps/daemon/src/api/pty.ts` | Bi-directional streaming of ANSI terminal chunks between `bun-pty`/`Bun.Terminal` and clients. |
 | **Approval Manager** | `apps/daemon/src/api/approvals.ts` | Manages pending tool approvals, yielding execution until explicit human authorization. |
-| **Secret Store** | `apps/daemon/src/api/secrets.ts` | Local AES-256 encrypted credential vault for provider API keys. |
+| **Secret & Vault Store** | `apps/daemon/src/services/gateway/` | Local AES-256-GCM encrypted credential vault (`gateway_secrets`) for provider API keys with AAD. |
 
 ## 3. Communication Direction
 

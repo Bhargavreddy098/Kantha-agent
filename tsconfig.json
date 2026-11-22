@@ -5,9 +5,9 @@
   },
   "include": [],
   "references": [
+    { "path": "packages/ui" },
     { "path": "packages/protocol" },
     { "path": "packages/db" },
-    { "path": "packages/ui" },
     { "path": "apps/daemon" },
     { "path": "apps/web" },
     { "path": "apps/cli" }

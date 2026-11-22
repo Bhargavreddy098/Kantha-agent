@@ -10,22 +10,24 @@ An autonomous AI coding agent and developer workbench built on a high-concurrenc
 - **Coding Harness**: Vercel AI SDK + Custom Effect Harness (OpenCode V2)
 - **PTY & File Watching**: Bun.Terminal (POSIX) / `bun-pty` (Windows) + `ripgrep`
 - **Local Persistence**: `bun:sqlite` + Drizzle ORM (WAL mode) + JSONL event log
-- **Web Workbench UI**: Vite + React 19 + TanStack Router + TanStack Query + Tailwind CSS v4 + Radix UI + `@xterm/xterm`
+- **Web Workbench UI**: Vite + React 19 + TanStack Router + TanStack Query + Astryx + `@xterm/xterm`
 - **Terminal CLI**: React Ink
 
 ---
+
+The Web Workbench (`apps/web`) is a modern React 19 Single Page Application connecting to the local Bun daemon.
 
 ## Repository Structure
 
 ```
 ├── apps/
 │   ├── daemon/        # Bun v1.4+ Runtime, Effect HttpApi, Custom Effect Harness
-│   ├── web/           # Vite + React 19 + TanStack Router/Query + Tailwind v4 SPA
+│   ├── web/           # Vite + React 19 + TanStack Router/Query + Astryx SPA
 │   └── cli/           # React Ink Terminal UI
 └── packages/
     ├── protocol/      # Effect Schema wire types and streaming events
     ├── db/            # Drizzle ORM schemas & bun:sqlite client (WAL mode)
-    └── ui/            # Radix UI primitives & Tailwind v4 tokens
+    └── ui/            # Legacy UI primitives
 ```
 
 ---

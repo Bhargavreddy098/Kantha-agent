@@ -14,7 +14,7 @@ Kantha is a local-first, autonomous AI coding workbench and daemon that executes
 | **Coding Harness** | Vercel AI SDK + Custom Effect Harness (OpenCode V2) | Generation-fenced agent execution loop, interactive approval gates, and multi-provider model routing. |
 | **PTY & File Watching** | Bun.Terminal (POSIX) / bun-pty (Windows) + ripgrep | Interactive terminal emulation (`@xterm/xterm`), instant file search, and change detection. |
 | **Local Persistence** | `bun:sqlite` + Drizzle ORM + JSONL event log | Embedded WAL-mode SQLite database for relational state, paired with append-only JSONL files for event streams. |
-| **Web Workbench UI** | Vite + React 19 + TanStack Router + TanStack Query + Tailwind v4 + Radix UI | Pure Single Page Application (SPA), zero SSR overhead, accessible headless component primitives. |
+| **Web Workbench UI** | Vite + React 19 + TanStack Router + TanStack Query + Astryx | Pure Single Page Application (SPA), zero SSR overhead, accessible Astryx components. |
 | **Terminal CLI** | React Ink | Interactive terminal companion communicating with the daemon over local HTTP/SSE/WS. |
 | **Desktop Shell** | *Deferred (Tauri v2)* | The Vite SPA is compiled statically to allow seamless embedding in Tauri v2 in a later milestone. |
 
@@ -92,7 +92,7 @@ kantha/
 │   ├── web/                    # Vite + React 19 SPA
 │   │   ├── src/
 │   │   │   ├── routes/         # TanStack Router file-based routes
-│   │   │   ├── components/     # Radix UI + Tailwind v4 components
+│   │   │   ├── components/     # Astryx UI composition
 │   │   │   ├── terminal/       # @xterm/xterm terminal wrapper
 │   │   │   └── main.tsx
 │   │   └── package.json
@@ -106,8 +106,8 @@ kantha/
     ├── db/                     # Local persistence
     │   ├── src/                # Drizzle ORM schemas & bun:sqlite client
     │   └── package.json
-    └── ui/                     # Shared UI primitives
-        ├── src/                # Radix UI + Tailwind v4 component library
+    └── ui/                     # Legacy UI primitives
+        ├── src/                # Legacy UI primitives
         └── package.json
 ```
 

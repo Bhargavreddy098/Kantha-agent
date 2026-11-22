@@ -5,11 +5,11 @@ This document describes the canonical monorepo structure for Kantha, organized a
 | Location | Responsibility | Stack |
 |---|---|---|
 | `apps/daemon` | Persistent local background service running the API gateway and coding harness. | Bun v1.4+, Effect-TS (`effect`, `HttpApi`), Vercel AI SDK, `bun-pty`, ripgrep |
-| `apps/web` | Web Workbench user interface: session dashboard, chat, diff viewer, interactive terminal. | Vite 6+, React 19, TanStack Router, TanStack Query, Tailwind CSS v4, Radix UI, `@xterm/xterm` |
+| `apps/web` | Web Workbench user interface: session dashboard, chat, diff viewer, interactive terminal. | Vite 6+, React 19, TanStack Router, TanStack Query, Astryx, `@xterm/xterm` |
 | `apps/cli` | Terminal user interface for developers working directly in the console. | React Ink, Bun |
 | `packages/protocol` | Authoritative wire contracts, schemas, and event definitions shared across apps. | Effect Schema |
 | `packages/db` | Local persistence schemas, SQLite client initialization, and migrations. | `bun:sqlite`, Drizzle ORM |
-| `packages/ui` | Reusable Radix UI primitives and Tailwind v4 design tokens. | React 19, Tailwind CSS v4, Radix UI |
+| `packages/ui` | Legacy UI primitives. | React 19, Tailwind CSS v4, Radix UI |
 
 ---
 

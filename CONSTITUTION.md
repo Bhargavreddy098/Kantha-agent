@@ -88,11 +88,10 @@ No feature request, performance shortcut, user urgency, or language model comple
 
 ---
 
-## Article VIII: Frontend Component Reuse & UI Integrity
+## Article VIII: Presentation Architecture
 
-1. **Astryx Design System Sovereignty:** All user interface components must be imported through public subpaths of `@astryxdesign/core`.
-2. **Zero Ad-Hoc Components:** Creating local custom component implementations for UI elements already provided by Astryx is prohibited.
-3. **Gap Escalation:** If Astryx lacks a required capability, the engineer or agent must document the gap in `docs/frontend/README.md` and obtain human owner approval before adding any external UI dependency.
+1. **Client Decoupling:** The Web Workbench in `apps/web` functions as an independent presentation client interacting with the daemon over local REST, SSE, and WebSocket protocols.
+2. **Implementation Freedom:** The UI and UX architecture in `apps/web` is designed and implemented directly by the repository owner.
 
 ---
 

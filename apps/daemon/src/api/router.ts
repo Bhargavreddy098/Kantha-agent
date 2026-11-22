@@ -14,6 +14,10 @@ import {
   CliCredentialManager,
   IngressFencing,
 } from "./auth";
+import { handleChatStreamRequest } from "./chat";
+import { handleDocumentExtractRequest } from "./documents";
+import { ProviderRegistry } from "../services/providerRegistry";
+import { createDaemonGatewayLayer } from "../services/gateway";
 
 export interface DaemonServerOptions {
   port?: number;
@@ -34,7 +38,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
 
   const isDev =
     options.devOriginAllowed ??
-    (process.env.NODE_ENV === "development" ||
+    (process.env.NODE_ENV !== "production" ||
       process.env.KANTHA_DEV_PROXY === "true");
 
   // In-memory authentication components per ADR-007
@@ -42,6 +46,8 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
   const sessionStore = new SessionStore({ port });
   const cliManager = new CliCredentialManager({ port, dataDir });
   const fencing = new IngressFencing({ port, devOriginAllowed: isDev });
+  const providerRegistry = new ProviderRegistry({ dataDir });
+  const gatewayLayer = createDaemonGatewayLayer({ db, dataDir });
 
   const initialTicket = ticketRegistry.createTicket();
 
@@ -182,7 +188,7 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       if (fencing.isOriginValid(origin)) {
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Access-Control-Allow-Credentials", "true");
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Kantha-CLI-Token");
       } else {
         // Cross-origin attempt from untrusted origin
@@ -366,11 +372,37 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       return;
     }
 
-    // Enforce Origin check for state-changing browser requests (fail-closed unless valid CLI token)
+    // Enforce CSRF source-origin check for state-changing browser requests (fail-closed unless valid CLI token)
     const cliHeader = req.headers["x-kantha-cli-token"];
     const isCli = typeof cliHeader === "string" && cliManager.verifyCliToken(cliHeader);
     if ((req.method === "POST" || req.method === "PUT" || req.method === "DELETE") && !isCli) {
-      if (!origin || !fencing.isOriginValid(origin)) {
+      let sourceOrigin: string | undefined;
+      const rawOrigin = typeof req.headers.origin === "string" ? req.headers.origin.trim() : undefined;
+      let rawRefererOrigin: string | undefined;
+
+      if (typeof req.headers.referer === "string" && req.headers.referer.trim()) {
+        try {
+          rawRefererOrigin = new URL(req.headers.referer.trim()).origin.toLowerCase();
+        } catch {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Forbidden: Malformed Referer header" }));
+          return;
+        }
+      }
+
+      const normOrigin = rawOrigin ? rawOrigin.toLowerCase() : undefined;
+
+      // Direct mismatch defense: when both Origin and Referer are provided, their normalized origins must match directly
+      if (normOrigin && rawRefererOrigin && normOrigin !== rawRefererOrigin) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Forbidden: Origin and Referer mismatch" }));
+        return;
+      }
+
+      // Prefer Origin, fall back to Referer
+      sourceOrigin = normOrigin || rawRefererOrigin;
+
+      if (!sourceOrigin || !fencing.isOriginValid(sourceOrigin)) {
         res.writeHead(403, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Forbidden: Unauthorized or missing Origin" }));
         return;
@@ -384,10 +416,110 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       return;
     }
 
-    // Model Providers Auto-Discovery
+    // Model Providers Auto-Discovery & Sanitized Listing
     if (pathname === "/api/providers" && req.method === "GET") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(discoverProviders()));
+      res.end(JSON.stringify(providerRegistry.getSanitized()));
+      return;
+    }
+
+    // Set Default Model
+    if (pathname === "/api/providers/default" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { modelId } = JSON.parse(body || "{}");
+          if (typeof modelId === "string" && modelId.trim()) {
+            providerRegistry.setDefaultModel(modelId.trim());
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true, defaultModel: providerRegistry.getDefaultModel() }));
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Invalid JSON payload" }));
+        }
+      });
+      return;
+    }
+
+    // Add or Update Custom Provider
+    if (pathname === "/api/providers" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          if (!payload.name || !payload.type) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Provider name and type are required" }));
+            return;
+          }
+          const saved = providerRegistry.upsertCustom(payload);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true, provider: saved, ...providerRegistry.getSanitized() }));
+        } catch (err: any) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err.message || "Failed to save provider" }));
+        }
+      });
+      return;
+    }
+
+    // Delete Custom Provider
+    if (pathname?.startsWith("/api/providers/") && req.method === "DELETE") {
+      const providerId = pathname.replace("/api/providers/", "").trim();
+      const deleted = providerRegistry.deleteCustom(providerId);
+      res.writeHead(deleted ? 200 : 404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: deleted, ...providerRegistry.getSanitized() }));
+      return;
+    }
+
+    // Test Provider Connection
+    if (pathname === "/api/providers/test" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          const testResult = await providerRegistry.testConnection(payload);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(testResult));
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: err.message || "Connection test failed" }));
+        }
+      });
+      return;
+    }
+
+    // Discover Models from Provider Endpoint
+    if (pathname === "/api/providers/discover" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          const models = await providerRegistry.discoverModels(payload);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ models }));
+        } catch (err: any) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ models: [], error: err.message || "Failed to discover models" }));
+        }
+      });
+      return;
+    }
+
+    // Vercel AI SDK Chat Streaming with Reasoning Separation
+    if (pathname === "/api/chat/stream" && req.method === "POST") {
+      await handleChatStreamRequest(req, res, { providerRegistry, gatewayLayer });
+      return;
+    }
+
+    // In-memory Document Text Extraction (PDF, DOCX, TXT, MD, CSV)
+    if (pathname === "/api/documents/extract" && req.method === "POST") {
+      await handleDocumentExtractRequest(req, res);
       return;
     }
 

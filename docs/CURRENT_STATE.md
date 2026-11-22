@@ -4,6 +4,8 @@
 
 Kantha is an autonomous, high-performance, local-first AI coding assistant and daemon workbench modeled on modern assistants (OpenCode, Cursor, Claude Code). The legacy manual access token login screens and cloud database dependencies have been eliminated in favor of **Automatic Local Session Authentication** ([ADR-007](decisions/ADR-007-automatic-local-session-authentication.md)), **strict Host/Origin fencing**, and **automatic workspace discovery**.
 
+The Web Workbench is implemented in `apps/web` as a clean React 19 SPA communicating with the Bun daemon over local loopback HTTP, SSE, and WebSockets.
+
 ---
 
 ## 1. Architecture Baseline
@@ -11,7 +13,7 @@ Kantha is an autonomous, high-performance, local-first AI coding assistant and d
 | Question | Current Answer |
 | :--- | :--- |
 | **What is the architecture baseline?** | [Technology Stack Specification](technology/STACK.md), [Runtime Topology](technology/RUNTIME-TOPOLOGY.md), [Database Strategy](technology/DATABASE-STRATEGY.md), and [Monorepo Code Structure](code-structure.md). |
-| **What is the runtime & monorepo stack?** | **Turborepo + Bun** monorepo, **Bun v1.4+** daemon runtime, **Effect-TS (`effect` + `HttpApi` + `Schema`)**, **Vercel AI SDK + Custom Effect Harness (OpenCode V2)**, **bun:sqlite + Drizzle ORM + JSONL** persistence, **Vite + React 19 + TanStack Router/Query + Tailwind v4 + Radix UI** SPA, and **React Ink** CLI. |
+| **What is the runtime & monorepo stack?** | **Turborepo + Bun** monorepo, **Bun v1.4+** daemon runtime, **Effect-TS (`effect` + `HttpApi` + `Schema`)**, **Vercel AI SDK + Custom Effect Harness (OpenCode V2)**, **bun:sqlite + Drizzle ORM + JSONL** persistence, **Vite + React 19 + TanStack Router/Query + Astryx** SPA, and **React Ink** CLI. |
 | **How is onboarding & authentication handled?** | **Automatic Local Session Authentication ([ADR-007](decisions/ADR-007-automatic-local-session-authentication.md))**: Zero manual login prompts or token entry. The daemon generates in-memory session authority and an ephemeral single-use **Pairing Ticket** (`#ticket=...`), which the browser SPA exchanges for an `HttpOnly`, `SameSite=Strict`, port-scoped cookie (`kantha_session_<port>`). All REST, SSE, and WebSocket PTY endpoints enforce fail-closed Host validation, strict Origin checks, and pre-upgrade WebSocket authentication. |
 | **What is the state of the Desktop Shell?** | Deferred to a later phase (Tauri v2 will wrap the compiled Vite SPA once daemon and web core stabilize). |
 | **Which approvals are open?** | SDD Gate 2 Technology Stack and Architecture Specifications approved for planning. |
@@ -32,8 +34,12 @@ Kantha is an autonomous, high-performance, local-first AI coding assistant and d
 
 ### Automated Test Coverage
 - **Security Suite**: 16 automated security and regression tests in [apps/daemon/src/api/auth/__tests__/security.test.ts](../apps/daemon/src/api/auth/__tests__/security.test.ts) covering unauthenticated REST/SSE rejection, DNS rebinding, cross-origin drive-bys, ticket reuse/expiry/concurrency, cookie attributes, daemon restarts, CLI token timing safety, pre-upgrade PTY rejection, and active WebSocket termination.
-- **Static Verification**: Full monorepo typechecking passes cleanly (`tsc --noEmit` on all 6 packages/apps with 0 errors).
-- **Build Verification**: Production web bundle compiles cleanly into `apps/web/dist`.
+- **Swiss AI Chat Suite**: 14 automated tests covering chat history categorization and title generation ([apps/web/src/db/__tests__/chatDb.test.ts](../apps/web/src/db/__tests__/chatDb.test.ts)), SSE streaming reasoning extraction ([apps/daemon/src/api/__tests__/chat.test.ts](../apps/daemon/src/api/__tests__/chat.test.ts)), and in-memory document extraction ([apps/daemon/src/api/__tests__/documents.test.ts](../apps/daemon/src/api/__tests__/documents.test.ts)). Total test suite: 30 passing tests.
+- **Web Workbench Architecture**: `apps/web` implemented as a production-grade Swiss International AI Chat application built with Astryx Design components (`@astryxdesign/core`, `@astryxdesign/theme-neutral`). Features a true full-height sidebar with pinned Settings trigger, an accessible Astryx Settings Modal dialog (`SettingsDialog.tsx`), a floating premium composer with an integrated Astryx `DropdownMenu` model selector, local-first Dexie IndexedDB storage, and real-time streaming with visible reasoning.
+- **Daemon Ingress & Multi-Model Ingress**: Ingress fencing updated with explicit loopback development port recognition (3000-3010, 5173-5180, 4173) and `KANTHA_ALLOWED_ORIGINS` support, eliminating `Unauthorized Origin` errors for Vite clients while preserving strict fail-closed DNS rebinding and cross-origin protection. Multi-model routing in `/api/chat/stream` seamlessly maps requests to OpenAI, Anthropic, or local Ollama endpoints.
+- **Automated Test Coverage**: 16 unit tests covering Ingress Fencing (`fencing.test.ts`), chat history categorization and title generation (`chatDb.test.ts`), SSE streaming reasoning extraction (`chat.test.ts`), and in-memory document extraction (`documents.test.ts`).
+- **Static Verification**: Full monorepo typechecking passes cleanly (`tsc --noEmit` on web and daemon with 0 errors).
+- **Build Verification**: Production web bundle compiles cleanly into `apps/web/dist` (`vite build` succeeded with Astryx core and neutral theme stylesheets).
 
 ### Actual End-to-End Verification
 - **Verified in Environment**: Local HTTP REST, SSE event streaming, WebSocket pre-upgrade rejection, atomic ticket consumption, and timing-safe CLI authentication verified via executable tests.

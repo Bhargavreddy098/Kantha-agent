@@ -5,19 +5,26 @@
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "start": "bun run src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.105",
+    "@ai-sdk/openai": "^4.0.115",
+    "@ai-sdk/openai-compatible": "^3.0.92",
     "@kantha/db": "workspace:*",
+    "@kantha/gateway": "workspace:*",
     "@kantha/protocol": "workspace:*",
-    "ai": "^4.1.0",
+    "ai": "^7.0.170",
     "effect": "^3.13.0",
+    "mammoth": "^1.13.0",
+    "pdf-parse": "^2.4.5",
     "ws": "^8.18.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pdf-parse": "^1.1.5",
     "@types/ws": "^8.5.14",
     "tsx": "^4.23.15",
     "typescript": "^5.7.3"

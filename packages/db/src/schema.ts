@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
@@ -36,3 +36,29 @@ export const sessionEvents = sqliteTable("session_events", {
   payload: text("payload").notNull(), // JSON
   createdAt: integer("created_at").notNull(),
 });
+
+export const gatewaySecrets = sqliteTable("gateway_secrets", {
+  id: text("id").primaryKey(),
+  ciphertext: text("ciphertext").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const usageLedger = sqliteTable("usage_ledger", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  turnId: text("turn_id"),
+  providerId: text("provider_id").notNull(),
+  modelId: text("model_id").notNull(),
+  inputTokens: integer("input_tokens").notNull(),
+  outputTokens: integer("output_tokens").notNull(),
+  reasoningTokens: integer("reasoning_tokens").notNull().default(0),
+  cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+  cacheWrite5mTokens: integer("cache_write_5m_tokens").notNull().default(0),
+  cacheWrite1hTokens: integer("cache_write_1h_tokens").notNull().default(0),
+  costUsd: real("cost_usd").notNull(),
+  estimated: integer("estimated", { mode: "boolean" }).notNull().default(false),
+  status: text("status", { enum: ["completed", "interrupted", "error"] }).notNull(),
+  timestamp: integer("timestamp").notNull(),
+});
+
