@@ -38,15 +38,56 @@ export interface DiscoverModelsResponse {
   error?: string;
 }
 
+/**
+ * Safely parses response JSON with defensive status checks:
+ * 1. Returns null on 204 No Content.
+ * 2. Reads res.text() first before attempting to parse JSON.
+ * 3. If !res.ok, extracts parsed.error or truncates raw text (max 200 chars) and throws.
+ * 4. If res.ok but body is empty or non-JSON (e.g. HTML proxy page), throws a clean readable error instead of raw SyntaxError.
+ */
+export async function safeJson<T = any>(res: Response): Promise<T> {
+  if (res.status === 204) {
+    return null as unknown as T;
+  }
+
+  const rawText = await res.text().catch(() => "");
+  const trimmed = rawText.trim();
+
+  let parsed: any = null;
+  if (trimmed) {
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      // Non-JSON content (e.g., HTML proxy page or plain text error)
+    }
+  }
+
+  if (!res.ok) {
+    const errorMsg =
+      parsed?.error ||
+      (trimmed ? trimmed.slice(0, 200) : `Request failed with status ${res.status}`);
+    throw new Error(errorMsg);
+  }
+
+  if (!trimmed) {
+    throw new Error("Unexpected empty response from server");
+  }
+
+  if (parsed === null) {
+    throw new Error(
+      `Unexpected non-JSON response from daemon (${trimmed.slice(0, 100)})`
+    );
+  }
+
+  return parsed as T;
+}
+
 export const providerService = {
   async getProviders(): Promise<ProvidersDataResponse> {
     const res = await fetch("/api/providers", {
       credentials: "include",
     });
-    if (!res.ok) {
-      throw new Error(`Failed to fetch providers: status ${res.status}`);
-    }
-    return res.json();
+    return safeJson<ProvidersDataResponse>(res);
   },
 
   async setDefaultModel(modelId: string): Promise<{ success: boolean; defaultModel: string }> {
@@ -56,10 +97,7 @@ export const providerService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ modelId }),
     });
-    if (!res.ok) {
-      throw new Error("Failed to set default model");
-    }
-    return res.json();
+    return safeJson<{ success: boolean; defaultModel: string }>(res);
   },
 
   async upsertCustomProvider(provider: {
@@ -77,11 +115,7 @@ export const providerService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(provider),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Failed to save custom provider");
-    }
-    return res.json();
+    return safeJson<ProvidersDataResponse>(res);
   },
 
   async deleteCustomProvider(providerId: string): Promise<ProvidersDataResponse> {
@@ -89,10 +123,7 @@ export const providerService = {
       method: "DELETE",
       credentials: "include",
     });
-    if (!res.ok) {
-      throw new Error("Failed to delete custom provider");
-    }
-    return res.json();
+    return safeJson<ProvidersDataResponse>(res);
   },
 
   async testConnection(config: {
@@ -107,7 +138,7 @@ export const providerService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
     });
-    return res.json();
+    return safeJson<TestConnectionResponse>(res);
   },
 
   async discoverModels(config: {
@@ -121,6 +152,6 @@ export const providerService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
     });
-    return res.json();
+    return safeJson<DiscoverModelsResponse>(res);
   },
 };

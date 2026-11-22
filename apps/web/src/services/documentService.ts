@@ -1,3 +1,5 @@
+import { safeJson } from "./providerService";
+
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 export const MAX_ATTACHMENTS = 5;
 export const MAX_TOTAL_PAYLOAD = 25 * 1024 * 1024; // 25MB
@@ -75,10 +77,5 @@ export async function extractDocumentText(
     }),
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || `Extraction failed with status ${response.status}`);
-  }
-
-  return await response.json();
+  return safeJson<{ filename: string; extractedText: string; charCount: number }>(response);
 }

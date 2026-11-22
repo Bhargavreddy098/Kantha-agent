@@ -223,7 +223,7 @@ export async function handleChatStreamRequest(
       }
 
       if (!resolution) {
-        res.writeHead(400, { "Content-Type": "application/json" });
+        res.writeHead(404, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
             error: `Unknown model or provider: '${requestedModel}'. Please check your configured providers in Settings.`,
@@ -245,6 +245,8 @@ export async function handleChatStreamRequest(
       }
 
       if (context?.gatewayLayer) {
+        let heartbeat: ReturnType<typeof setInterval> | undefined;
+
         const kanthaMessages: KanthaMessage[] = rawMessages.map((msg) => ({
           role:
             msg.role === "assistant" || msg.role === "system" || msg.role === "tool"
@@ -253,17 +255,11 @@ export async function handleChatStreamRequest(
           content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
         }));
 
-        let clientClosed = false;
-        res.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-          "X-Accel-Buffering": "no",
-        });
-
         const program = Effect.scoped(
           Effect.gen(function* () {
             const gateway = yield* GatewayService;
+
+            // Pre-flight validation (runs budget check, provider resolution, etc. before sending 200)
             const stream = yield* gateway.stream({
               providerId: provider.id,
               modelId,
@@ -271,44 +267,105 @@ export async function handleChatStreamRequest(
               attribution: { sessionId: payload.sessionId || "default" },
             });
 
-            yield* Stream.runForEach(stream, (delta) =>
-              Effect.sync(() => {
-                if (clientClosed) return;
-                if (delta.text) {
-                  res.write(formatSseEvent({ content: delta.text, reasoning: "" }));
-                }
-                if (delta.reasonings && delta.reasonings.length > 0) {
-                  for (const r of delta.reasonings) {
-                    if (r.text) {
-                      res.write(formatSseEvent({ content: "", reasoning: r.text }));
+            // Pre-flight passed: flush SSE headers
+            res.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+              "X-Accel-Buffering": "no",
+            });
+            if (typeof (res as any).flushHeaders === "function") {
+              (res as any).flushHeaders();
+            }
+            res.write(": connected\n\n");
+
+            heartbeat = setInterval(() => {
+              if (!res.writableEnded) {
+                res.write(": ping\n\n");
+              }
+            }, 15_000);
+
+            try {
+              yield* Stream.runForEach(stream, (delta) =>
+                Effect.sync(() => {
+                  if (res.writableEnded) return;
+                  if (delta.text) {
+                    res.write(formatSseEvent({ content: delta.text, reasoning: "" }));
+                  }
+                  if (delta.reasonings && delta.reasonings.length > 0) {
+                    for (const r of delta.reasonings) {
+                      if (r.text) {
+                        res.write(formatSseEvent({ content: "", reasoning: r.text }));
+                      }
                     }
                   }
-                }
-              })
-            );
+                })
+              );
 
-            if (!clientClosed) {
-              res.write(formatSseEvent("[DONE]"));
-              res.end();
+              if (!res.writableEnded) {
+                res.write(formatSseEvent("[DONE]"));
+              }
+            } finally {
+              if (heartbeat) {
+                clearInterval(heartbeat);
+                heartbeat = undefined;
+              }
             }
           })
+        ).pipe(
+          Effect.catchAllCause((cause) =>
+            Effect.sync(() => {
+              const failureMsg =
+                cause._tag === "Fail"
+                  ? (cause as any).error?.message || String((cause as any).error)
+                  : "Stream error occurred";
+              if (!res.headersSent) {
+                const isBudget = failureMsg.toLowerCase().includes("budget");
+                const isNotFound = failureMsg.toLowerCase().includes("not found");
+                const statusCode = isBudget ? 402 : isNotFound ? 404 : 500;
+                res.writeHead(statusCode, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: failureMsg }));
+              } else if (!res.writableEnded) {
+                res.write(formatSseEvent({ content: `\n\n[Error: ${failureMsg}]`, reasoning: "" }));
+                res.write(formatSseEvent("[DONE]"));
+              }
+            })
+          ),
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (heartbeat) {
+                clearInterval(heartbeat);
+                heartbeat = undefined;
+              }
+              if (!res.writableEnded) {
+                res.end();
+              }
+            })
+          )
         );
 
         const fiber = Effect.runFork(program.pipe(Effect.provide(context.gatewayLayer)));
-        req.on("close", () => {
-          clientClosed = true;
-          Effect.runFork(Fiber.interrupt(fiber));
+
+        // Disconnect detection: Attach to res.on("close") guarded by !res.writableEnded
+        res.on("close", () => {
+          if (heartbeat) {
+            clearInterval(heartbeat);
+            heartbeat = undefined;
+          }
+          if (!res.writableEnded) {
+            Effect.runFork(Fiber.interrupt(fiber));
+          }
         });
         return;
       }
 
       const coreMessages = convertToCoreMessages(rawMessages);
       const abortController = new AbortController();
-      let clientClosed = false;
 
-      req.on("close", () => {
-        clientClosed = true;
-        abortController.abort();
+      res.on("close", () => {
+        if (!res.writableEnded) {
+          abortController.abort();
+        }
       });
 
       const languageModel = createLanguageModel(provider, modelId);
@@ -327,28 +384,42 @@ export async function handleChatStreamRequest(
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       });
+      if (typeof (res as any).flushHeaders === "function") {
+        (res as any).flushHeaders();
+      }
+      res.write(": connected\n\n");
 
-      for await (const part of result.fullStream) {
-        if (clientClosed) break;
-
-        const partType = (part as any).type;
-        if (partType === "text-delta") {
-          const text = (part as any).text ?? (part as any).textDelta ?? "";
-          if (text) {
-            res.write(formatSseEvent({ content: text, reasoning: "" }));
-          }
-        } else if (partType === "reasoning-delta" || partType === "reasoning") {
-          const text = (part as any).text ?? (part as any).textDelta ?? "";
-          if (text) {
-            res.write(formatSseEvent({ content: "", reasoning: text }));
-          }
-        } else if (partType === "error") {
-          const errMsg = (part as any).error?.message || "Stream error";
-          res.write(formatSseEvent({ content: `\n\n[Error: ${errMsg}]`, reasoning: "" }));
+      const fallbackHeartbeat = setInterval(() => {
+        if (!res.writableEnded) {
+          res.write(": ping\n\n");
         }
+      }, 15_000);
+
+      try {
+        for await (const part of result.fullStream) {
+          if (res.writableEnded) break;
+
+          const partType = (part as any).type;
+          if (partType === "text-delta") {
+            const text = (part as any).text ?? (part as any).textDelta ?? "";
+            if (text) {
+              res.write(formatSseEvent({ content: text, reasoning: "" }));
+            }
+          } else if (partType === "reasoning-delta" || partType === "reasoning") {
+            const text = (part as any).text ?? (part as any).textDelta ?? "";
+            if (text) {
+              res.write(formatSseEvent({ content: "", reasoning: text }));
+            }
+          } else if (partType === "error") {
+            const errMsg = (part as any).error?.message || "Stream error";
+            res.write(formatSseEvent({ content: `\n\n[Error: ${errMsg}]`, reasoning: "" }));
+          }
+        }
+      } finally {
+        clearInterval(fallbackHeartbeat);
       }
 
-      if (!clientClosed) {
+      if (!res.writableEnded) {
         res.write(formatSseEvent("[DONE]"));
         res.end();
       }

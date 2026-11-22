@@ -7,7 +7,7 @@ import { WelcomeScreen } from "./WelcomeScreen";
 import { MessageItem } from "./MessageItem";
 import { Composer } from "./Composer";
 import { SettingsDialog } from "./SettingsDialog";
-import type { ProvidersDataResponse } from "../services/providerService";
+import { safeJson, type ProvidersDataResponse } from "../services/providerService";
 import {
   useConversations,
   useMessages,
@@ -48,22 +48,23 @@ export const ChatWorkspace: React.FC = () => {
 
   const refreshProviders = useCallback(() => {
     fetch("/api/providers", { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) throw new Error("Offline");
-        return res.json();
-      })
+      .then((res) => safeJson<ProvidersDataResponse>(res))
       .then((data: ProvidersDataResponse) => {
+        if (!data) return;
         setIsOnline(true);
         setProvidersData(data);
         const saved = localStorage.getItem("kantha_selected_model");
         const activeModel = saved || data.defaultModel || "openai:gpt-4o";
         setSelectedModel(activeModel);
 
-        const all = data.providers?.flatMap((p) =>
-          p.models.map((m) => ({ ...m, fullId: `${p.id}:${m.id}` }))
-        ) || [];
+        const all =
+          data.providers?.flatMap((p) =>
+            p.models.map((m) => ({ ...m, fullId: `${p.id}:${m.id}` }))
+          ) || [];
         const match = all.find((m) => m.fullId === activeModel || m.id === activeModel);
-        const displayName = match?.name || (activeModel.includes(":") ? activeModel.slice(activeModel.indexOf(":") + 1) : activeModel);
+        const displayName =
+          match?.name ||
+          (activeModel.includes(":") ? activeModel.slice(activeModel.indexOf(":") + 1) : activeModel);
         setModelStatus(`Connected: ${displayName}`);
       })
       .catch(() => {

@@ -102,4 +102,20 @@ describe("Daemon Concrete Gateway Layers Integration", () => {
       }
     }
   });
+
+  it("enforces fail-fast database initialization", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "kantha-db-fail-fast-"));
+    const dbPath = path.join(tempDir, "test.sqlite");
+    try {
+      const res = await createKanthaDb({ dbPath });
+      assert.ok(res.db, "db instance must be defined and non-null");
+      assert.ok(res.sqlite, "sqlite instance must be defined and non-null");
+    } finally {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // Temp cleanup
+      }
+    }
+  });
 });

@@ -31,11 +31,11 @@ export function createDaemonGatewayLayer(options: DaemonGatewayOptions) {
     catalogCacheStoreLayer
   );
 
-  return GatewayServiceLive.pipe(
-    Layer.provide(VaultServiceLive),
-    Layer.provide(CatalogServiceLive),
-    Layer.provideMerge(daemonPortsLayer)
+  const servicesLayer = GatewayServiceLive.pipe(
+    Layer.provideMerge(Layer.merge(VaultServiceLive, CatalogServiceLive))
   );
+
+  return servicesLayer.pipe(Layer.provideMerge(daemonPortsLayer));
 }
 
 export * from "./key-provider";

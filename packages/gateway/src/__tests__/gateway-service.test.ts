@@ -190,4 +190,90 @@ describe("GatewayService Assembly & Operations", () => {
       }
     );
   });
+
+  it("rejects mock:// base URLs when NODE_ENV is production", async () => {
+    const origEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      const sharedLayer = createSharedLayer();
+
+      const program = Effect.gen(function* () {
+        const providerStore = yield* ProviderStore;
+        const gateway = yield* GatewayService;
+
+        yield* providerStore.saveProvider({
+          id: "prod-mock-provider",
+          name: "Prod Mock Provider",
+          type: "openai",
+          baseURL: "mock://openai",
+          models: [{ id: "gpt-4o" }],
+        });
+
+        const req: InferenceRequest = {
+          providerId: "prod-mock-provider",
+          modelId: "gpt-4o",
+          messages: [{ role: "user", content: "Hello" }],
+        };
+
+        return yield* gateway.complete(req);
+      });
+
+      await assert.rejects(
+        async () => {
+          await Effect.runPromise(program.pipe(Effect.provide(sharedLayer)));
+        },
+        (err: any) => {
+          const errStr = String(err);
+          assert.ok(
+            errStr.includes("mock://") || errStr.includes("permitted") || errStr.includes("test"),
+            `Expected mock gating error, got: ${errStr}`
+          );
+          return true;
+        }
+      );
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("propagates upstream provider network or streaming error into GatewayError", async () => {
+    const sharedLayer = createSharedLayer();
+
+    const program = Effect.gen(function* () {
+      const providerStore = yield* ProviderStore;
+      const gateway = yield* GatewayService;
+
+      // Unreachable local port to guarantee upstream network failure
+      yield* providerStore.saveProvider({
+        id: "failing-upstream",
+        name: "Failing Upstream",
+        type: "openai_compatible",
+        baseURL: "http://127.0.0.1:59999/v1",
+        isLocal: true,
+        models: [{ id: "test-model" }],
+      });
+
+      const req: InferenceRequest = {
+        providerId: "failing-upstream",
+        modelId: "test-model",
+        messages: [{ role: "user", content: "Hello" }],
+      };
+
+      return yield* gateway.complete(req);
+    });
+
+    await assert.rejects(
+      async () => {
+        await Effect.runPromise(program.pipe(Effect.provide(sharedLayer)));
+      },
+      (err: any) => {
+        const errStr = String(err);
+        assert.ok(
+          errStr.includes("GatewayError") || errStr.includes("fetch") || errStr.includes("connect") || errStr.includes("ECONNREFUSED"),
+          `Expected GatewayError from failing upstream, got: ${errStr}`
+        );
+        return true;
+      }
+    );
+  });
 });
