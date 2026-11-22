@@ -15,6 +15,7 @@ import {
   IngressFencing,
 } from "./auth";
 import { handleChatStreamRequest } from "./chat";
+import { handleDocumentExtractRequest } from "./documents";
 
 export interface DaemonServerOptions {
   port?: number;
@@ -395,6 +396,12 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
     // OpenAI-compatible Chat Streaming with Reasoning Separation
     if (pathname === "/api/chat/stream" && req.method === "POST") {
       await handleChatStreamRequest(req, res);
+      return;
+    }
+
+    // In-memory Document Text Extraction (PDF, DOCX, TXT, MD, CSV)
+    if (pathname === "/api/documents/extract" && req.method === "POST") {
+      await handleDocumentExtractRequest(req, res);
       return;
     }
 
