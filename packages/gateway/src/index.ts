@@ -9,3 +9,5 @@ export * from "./ports/providers";
 export * from "./ports/ledger";
 export * from "./ports/cache";
 export * from "./ports/in-memory";
+export * from "./vault/cipher";
+export * from "./vault/service";
