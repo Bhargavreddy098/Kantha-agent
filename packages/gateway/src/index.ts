@@ -11,3 +11,6 @@ export * from "./ports/cache";
 export * from "./ports/in-memory";
 export * from "./vault/cipher";
 export * from "./vault/service";
+export * from "./compat/ssrf";
+export * from "./compat/timeouts";
+export * from "./compat/fetch-wrapper";
