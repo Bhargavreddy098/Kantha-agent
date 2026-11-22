@@ -14,3 +14,5 @@ export * from "./vault/service";
 export * from "./compat/ssrf";
 export * from "./compat/timeouts";
 export * from "./compat/fetch-wrapper";
+export * from "./catalog/tiers";
+export * from "./catalog/service";
