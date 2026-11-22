@@ -319,9 +319,25 @@ export class ProviderRegistry {
       ? providerInput.apiKey
       : existing?.apiKey;
 
-    const models: ProviderModel[] = Array.isArray(providerInput.models) && providerInput.models.length > 0
+    const rawModels: ProviderModel[] = Array.isArray(providerInput.models) && providerInput.models.length > 0
       ? providerInput.models
       : existing?.models || [{ id: "default-model", name: "Default Model" }];
+
+    // Deduplicate models by id, preserving existing capabilities if omitted
+    const uniqueModels = new Map<string, ProviderModel>();
+    for (const m of rawModels) {
+      if (m && typeof m.id === "string" && m.id.trim()) {
+        const modelId = m.id.trim();
+        if (!uniqueModels.has(modelId)) {
+          uniqueModels.set(modelId, {
+            id: modelId,
+            name: (m.name || modelId).trim(),
+            capabilities: m.capabilities || { streaming: true },
+          });
+        }
+      }
+    }
+    const models = Array.from(uniqueModels.values());
 
     const updated: ProviderConfig = {
       id,
@@ -453,15 +469,21 @@ export class ProviderRegistry {
         rawList = data;
       }
 
-      return rawList
-        .filter((item: any) => item && (typeof item.id === "string" || typeof item.name === "string"))
-        .map((item: any) => {
-          const id = item.id || item.name;
-          return {
-            id,
-            name: item.name || id,
-          };
-        });
+      const seen = new Set<string>();
+      const result: Array<{ id: string; name: string }> = [];
+      for (const item of rawList) {
+        if (item && (typeof item.id === "string" || typeof item.name === "string")) {
+          const id = (item.id || item.name).trim();
+          if (id && !seen.has(id)) {
+            seen.add(id);
+            result.push({
+              id,
+              name: (item.name || id).trim(),
+            });
+          }
+        }
+      }
+      return result;
     } catch (err: any) {
       throw new Error(err.message || "Failed to discover models from endpoint");
     }

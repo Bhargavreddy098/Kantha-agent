@@ -179,4 +179,31 @@ describe("ProviderRegistry Service", () => {
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  it("should persist and deduplicate multiple discovered models in custom provider", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kantha-reg-test-"));
+    const registry = new ProviderRegistry({ dataDir: tmpDir });
+
+    const models = [
+      { id: "model-a", name: "Model A" },
+      { id: "model-b:free", name: "Model B Free" },
+      { id: "model-a", name: "Model A Duplicate" },
+    ];
+
+    registry.upsertCustom({
+      id: "custom_multi",
+      name: "Multi Provider",
+      type: "openai_compatible",
+      baseURL: "https://api.example.com/v1",
+      models,
+    });
+
+    const saved = registry.getAll().find((p) => p.id === "custom_multi");
+    assert.ok(saved);
+    assert.equal(saved.models.length, 2, "duplicate models should be deduplicated");
+    assert.equal(saved.models[0].id, "model-a");
+    assert.equal(saved.models[1].id, "model-b:free");
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 });
