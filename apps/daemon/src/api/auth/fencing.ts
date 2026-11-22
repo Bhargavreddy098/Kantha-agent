@@ -61,13 +61,15 @@ export class IngressFencing {
     }
 
     if (this.devOriginAllowed) {
-      // Explicitly configured frontend development hosts and origins (Vite dev server on port 3000, preview on 5173)
-      const devPorts = [3000, 5173];
+      // Explicitly configured frontend development hosts and origins (Vite dev server on ports 3000-3004, 5173-5176, 4173)
+      const devPorts = [3000, 3001, 3002, 3003, 3004, 5173, 5174, 5175, 5176, 4173];
       for (const p of devPorts) {
         this.allowedHosts.add(`127.0.0.1:${p}`);
         this.allowedHosts.add(`localhost:${p}`);
+        this.allowedHosts.add(`[::1]:${p}`);
         this.allowedOrigins.add(`http://127.0.0.1:${p}`);
         this.allowedOrigins.add(`http://localhost:${p}`);
+        this.allowedOrigins.add(`http://[::1]:${p}`);
       }
     }
   }
@@ -94,7 +96,7 @@ export class IngressFencing {
       return false;
     }
 
-    const normalized = originHeader.trim().toLowerCase();
+    const normalized = originHeader.trim().toLowerCase().replace(/\/+$/, "");
     return this.allowedOrigins.has(normalized);
   }
 

@@ -166,6 +166,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       });
       if (res.models && res.models.length > 0) {
         setDiscoveredModels(res.models);
+      } else if (res.error) {
+        setProviderFormError(res.error);
       } else {
         setProviderFormError("No models discovered from the endpoint. You can enter the Model ID manually below.");
       }

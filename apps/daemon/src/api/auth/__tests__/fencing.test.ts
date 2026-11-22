@@ -16,20 +16,21 @@ describe("IngressFencing Unit Tests", () => {
     assert.strictEqual(fencing.isOriginValid("http://127.0.0.1:3000"), false); // devOriginAllowed is false
   });
 
-  it("should allow standard Vite dev origins when devOriginAllowed is true", () => {
+  it("should allow standard Vite dev origins and loopback ports when devOriginAllowed is true", () => {
     const fencing = new IngressFencing({ port: 4000, devOriginAllowed: true });
 
     assert.strictEqual(fencing.isOriginValid("http://127.0.0.1:3000"), true);
     assert.strictEqual(fencing.isOriginValid("http://localhost:3000"), true);
+    assert.strictEqual(fencing.isOriginValid("http://[::1]:3000"), true);
     assert.strictEqual(fencing.isOriginValid("http://127.0.0.1:5173"), true);
     assert.strictEqual(fencing.isOriginValid("http://localhost:5173"), true);
-    // Only strictly configured frontend dev ports 3000 and 5173 are allowed
-    assert.strictEqual(fencing.isOriginValid("http://localhost:5174"), false);
-    assert.strictEqual(fencing.isOriginValid("http://127.0.0.1:4173"), false);
+    assert.strictEqual(fencing.isOriginValid("http://localhost:5174"), true);
+    assert.strictEqual(fencing.isOriginValid("http://127.0.0.1:4173"), true);
 
-    // External origins are still blocked
+    // External origins are strictly blocked
     assert.strictEqual(fencing.isOriginValid("http://evil.com"), false);
     assert.strictEqual(fencing.isOriginValid("https://attacker.site"), false);
+    assert.strictEqual(fencing.isOriginValid("http://evil.com:3000"), false);
   });
 
   it("should accept custom allowedOrigins array", () => {

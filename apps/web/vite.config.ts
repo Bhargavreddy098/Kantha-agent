@@ -16,6 +16,21 @@ export default defineConfig({
         target: DAEMON_TARGET,
         changeOrigin: true, // Rewrites Host header upstream to 127.0.0.1:<daemonPort>
         secure: false,
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            // Forward Origin if present, or synthesize from Referer/Host
+            if (!proxyReq.getHeader("origin")) {
+              const referer = req.headers.referer;
+              if (referer) {
+                try {
+                  proxyReq.setHeader("origin", new URL(referer).origin);
+                } catch {}
+              } else if (req.headers.host) {
+                proxyReq.setHeader("origin", `http://${req.headers.host}`);
+              }
+            }
+          });
+        },
       },
       "/ws": {
         target: DAEMON_WS_TARGET,

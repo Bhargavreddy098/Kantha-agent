@@ -502,8 +502,8 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ models }));
         } catch (err: any) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ models: [], error: err.message }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ models: [], error: err.message || "Failed to discover models" }));
         }
       });
       return;

@@ -362,10 +362,22 @@ export class ProviderRegistry {
       });
 
       const latencyMs = Date.now() - start;
-      if (response.ok || response.status === 400 || response.status === 404 || response.status === 405) {
-        // Some OpenAI-compatible servers return 400/405 on GET /messages or /models if unimplemented,
+      if (response.ok) {
+        return { success: true, latencyMs, status: response.status };
+      }
+
+      if (response.status === 401) {
+        return { success: false, latencyMs, status: 401, error: "Invalid API Key or unauthorized (HTTP 401)" };
+      }
+
+      if (response.status === 403) {
+        return { success: false, latencyMs, status: 403, error: "Forbidden: API key does not have access (HTTP 403)" };
+      }
+
+      if (response.status === 400 || response.status === 404 || response.status === 405) {
+        // Some OpenAI-compatible servers return 400/404/405 on GET /models or /messages if unimplemented,
         // but it proves host connectivity and responsive server
-        return { success: response.status !== 401 && response.status !== 403, latencyMs, status: response.status };
+        return { success: true, latencyMs, status: response.status };
       }
 
       const errorText = await response.text().catch(() => "");
@@ -402,25 +414,39 @@ export class ProviderRegistry {
       const response = await fetch(`${url}/models`, {
         method: "GET",
         headers,
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (!response.ok) {
-        return [];
+        const errorText = await response.text().catch(() => "");
+        throw new Error(
+          errorText
+            ? `Upstream error (${response.status}): ${errorText.slice(0, 150)}`
+            : `Upstream endpoint returned HTTP ${response.status}`
+        );
       }
 
       const data = await response.json();
-      if (Array.isArray(data.data)) {
-        return data.data
-          .filter((item: any) => item && typeof item.id === "string")
-          .map((item: any) => ({
-            id: item.id,
-            name: item.id,
-          }));
+      let rawList: any[] = [];
+      if (Array.isArray(data?.data)) {
+        rawList = data.data;
+      } else if (Array.isArray(data?.models)) {
+        rawList = data.models;
+      } else if (Array.isArray(data)) {
+        rawList = data;
       }
-      return [];
-    } catch {
-      return [];
+
+      return rawList
+        .filter((item: any) => item && (typeof item.id === "string" || typeof item.name === "string"))
+        .map((item: any) => {
+          const id = item.id || item.name;
+          return {
+            id,
+            name: item.name || id,
+          };
+        });
+    } catch (err: any) {
+      throw new Error(err.message || "Failed to discover models from endpoint");
     }
   }
 }
