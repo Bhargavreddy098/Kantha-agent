@@ -2,10 +2,33 @@ import { Layer, Effect } from "effect";
 import { MasterKeyProvider, VaultError } from "@kantha/gateway";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import child_process from "node:child_process";
 import crypto from "node:crypto";
 
 export interface KeyProviderOptions {
   dataDir?: string;
+}
+
+export function enforceKeyPermissions(filePath: string): void {
+  if (process.platform === "win32") {
+    try {
+      const username = os.userInfo().username;
+      if (username) {
+        child_process.execFileSync(
+          "icacls",
+          [filePath, "/inheritance:r", "/grant:r", `${username}:(R,W)`],
+          { stdio: "ignore", timeout: 2000 }
+        );
+      }
+    } catch {
+      // Best-effort if icacls is restricted in sandbox
+    }
+  } else {
+    try {
+      fs.chmodSync(filePath, 0o600);
+    } catch {}
+  }
 }
 
 export function createMasterKeyLayer(options: KeyProviderOptions = {}) {
@@ -33,6 +56,7 @@ export function createMasterKeyLayer(options: KeyProviderOptions = {}) {
           }
 
           if (fs.existsSync(keyPath)) {
+            enforceKeyPermissions(keyPath);
             const existing = fs.readFileSync(keyPath);
             if (existing.length >= 32) {
               return existing.subarray(0, 32);
@@ -46,6 +70,7 @@ export function createMasterKeyLayer(options: KeyProviderOptions = {}) {
           } catch {
             fs.writeFileSync(keyPath, newKey);
           }
+          enforceKeyPermissions(keyPath);
 
           return newKey;
         },
