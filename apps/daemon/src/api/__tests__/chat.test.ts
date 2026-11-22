@@ -195,5 +195,11 @@ describe("Chat SSE Streaming Service", () => {
       const formatted = formatSseEvent("[DONE]");
       assert.equal(formatted, "data: [DONE]\n\n");
     });
+
+    it("should format error event with error message and empty reasoning", () => {
+      const formatted = formatSseEvent({ content: "\n\n[Error: Rate limit exceeded]", reasoning: "" });
+      assert.ok(formatted.includes("[Error: Rate limit exceeded]"));
+      assert.ok(formatted.startsWith("data: {"));
+    });
   });
 });
