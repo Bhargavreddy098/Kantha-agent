@@ -1,11 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { Effect, Layer, Stream } from "effect";
+import { GatewayService, GatewayError } from "@kantha/gateway";
 import {
   formatSseEvent,
   sanitizeMessagesForUpstream,
   parseOpenAiDelta,
   convertToCoreMessages,
   createLanguageModel,
+  handleChatStreamRequest,
 } from "../chat";
 
 describe("Chat SSE Streaming Service", () => {
@@ -200,6 +204,144 @@ describe("Chat SSE Streaming Service", () => {
       const formatted = formatSseEvent({ content: "\n\n[Error: Rate limit exceeded]", reasoning: "" });
       assert.ok(formatted.includes("[Error: Rate limit exceeded]"));
       assert.ok(formatted.startsWith("data: {"));
+    });
+  });
+
+  describe("handleChatStreamRequest SSE Lifecycle & Error Handling", () => {
+    function createMockHttp(payload: any) {
+      const req = new EventEmitter() as any;
+      req.method = "POST";
+      req.headers = { "content-type": "application/json" };
+
+      const res = new EventEmitter() as any;
+      res.headers = {};
+      res.statusCode = 200;
+      res.headersSent = false;
+      res.writableEnded = false;
+      res.written = "";
+
+      res.writeHead = (status: number, headers?: any) => {
+        res.statusCode = status;
+        res.headers = headers || {};
+        res.headersSent = true;
+      };
+      res.write = (chunk: string) => {
+        res.written += chunk;
+        return true;
+      };
+      res.end = (chunk?: string) => {
+        if (chunk) res.written += chunk;
+        res.writableEnded = true;
+        res.emit("finish");
+      };
+      res.flushHeaders = () => {};
+
+      const send = () => {
+        req.emit("data", JSON.stringify(payload));
+        req.emit("end");
+      };
+
+      return { req, res, send };
+    }
+
+    it("responds with HTTP 404 JSON when provider or model is unknown", async () => {
+      const { req, res, send } = createMockHttp({
+        model: "non-existent-provider:mystery-model",
+        messages: [{ role: "user", content: "Hi" }],
+      });
+
+      const providerRegistry = {
+        getProviderForModel: () => null,
+        getDefaultModel: () => "openai:gpt-4o",
+      } as any;
+
+      await handleChatStreamRequest(req, res, { providerRegistry });
+      send();
+
+      // Wait a tick for async handler
+      await new Promise((r) => setTimeout(r, 20));
+
+      assert.equal(res.statusCode, 404);
+      assert.equal(res.headers["Content-Type"], "application/json");
+      assert.ok(res.written.includes("Unknown model or provider"));
+      assert.equal(res.writableEnded, true);
+    });
+
+    it("responds with HTTP 402 JSON before headers sent when budget is exceeded in preflight", async () => {
+      const { req, res, send } = createMockHttp({
+        model: "openai:gpt-4o",
+        messages: [{ role: "user", content: "Hi" }],
+        sessionId: "over-budget-session",
+      });
+
+      const providerRegistry = {
+        getProviderForModel: () => ({
+          provider: { id: "openai", name: "OpenAI", type: "openai", configured: true, apiKey: "key", models: [] },
+          modelId: "gpt-4o",
+        }),
+      } as any;
+
+      const MockGatewayLayer = Layer.succeed(
+        GatewayService,
+        GatewayService.of({
+          stream: () => Effect.fail(new GatewayError("Budget exceeded: limit reached")),
+          complete: () => Effect.die("not implemented"),
+          passthrough: () => Effect.succeed(null),
+          getCatalog: () => Effect.die("not implemented"),
+          testConnection: () => Effect.die("not implemented"),
+        })
+      );
+
+      await handleChatStreamRequest(req, res, { providerRegistry, gatewayLayer: MockGatewayLayer });
+      send();
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      assert.equal(res.statusCode, 402);
+      assert.equal(res.headers["Content-Type"], "application/json");
+      assert.ok(res.written.includes("Budget exceeded"));
+      assert.equal(res.writableEnded, true);
+    });
+
+    it("emits SSE error event and calls res.end() when stream fails mid-flight", async () => {
+      const { req, res, send } = createMockHttp({
+        model: "openai:gpt-4o",
+        messages: [{ role: "user", content: "Hi" }],
+      });
+
+      const providerRegistry = {
+        getProviderForModel: () => ({
+          provider: { id: "openai", name: "OpenAI", type: "openai", configured: true, apiKey: "key", models: [] },
+          modelId: "gpt-4o",
+        }),
+      } as any;
+
+      const failingStream = Stream.make({ text: "First chunk" }).pipe(
+        Stream.concat(Stream.fail(new GatewayError("Upstream connection dropped")))
+      );
+
+      const MockGatewayLayer = Layer.succeed(
+        GatewayService,
+        GatewayService.of({
+          stream: () => Effect.succeed(failingStream),
+          complete: () => Effect.die("not implemented"),
+          passthrough: () => Effect.succeed(null),
+          getCatalog: () => Effect.die("not implemented"),
+          testConnection: () => Effect.die("not implemented"),
+        })
+      );
+
+      await handleChatStreamRequest(req, res, { providerRegistry, gatewayLayer: MockGatewayLayer });
+      send();
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.headers["Content-Type"], "text/event-stream");
+      assert.ok(res.written.includes("First chunk"));
+      assert.ok(res.written.includes("Upstream connection dropped"));
+      assert.ok(res.written.includes("[DONE]"));
+      assert.equal(res.writableEnded, true);
     });
   });
 });
