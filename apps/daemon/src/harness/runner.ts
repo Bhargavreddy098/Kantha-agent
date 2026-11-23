@@ -6,7 +6,7 @@ import { GatewayService, type KanthaMessage, type KanthaTool } from "@kantha/gat
 import { checkpoints, sessionEvents, sessions, eq, desc } from "@kantha/db";
 import type { KanthaEvent } from "@kantha/protocol";
 import { toolRegistry } from "./tools";
-import type { ApprovalManager } from "../api/approvals";
+import type { ApprovalManager, ToolApprovalDecision } from "../api/approvals";
 
 export interface RunnerOptions {
   sessionId: string;
@@ -149,14 +149,14 @@ export class EffectHarnessRunner {
       let currentGeneration = 0;
 
       if (self.db) {
-        const lastCheckpoints = yield* Effect.promise(() =>
+        const lastCheckpoints = (yield* Effect.promise(() =>
           self.db
             .select()
             .from(checkpoints)
             .where(eq(checkpoints.sessionId, self.sessionId))
             .orderBy(desc(checkpoints.generation), desc(checkpoints.stepIndex))
             .limit(1)
-        );
+        )) as any[];
 
         if (lastCheckpoints.length > 0) {
           try {
@@ -248,7 +248,7 @@ export class EffectHarnessRunner {
         // Consume inference stream
         yield* Stream.runForEach(inferenceStream, (delta) =>
           Effect.sync(() => {
-            if (delta.type === "text" && delta.text) {
+            if (delta.text) {
               assistantText += delta.text;
               self.emit({
                 type: "token_delta",
@@ -256,34 +256,41 @@ export class EffectHarnessRunner {
                 text: delta.text,
                 timestamp: Date.now(),
               });
-            } else if (delta.type === "reasoning" && delta.text) {
+            }
+            if (delta.reasonings && delta.reasonings.length > 0) {
+              for (const r of delta.reasonings) {
+                if (r.text) {
+                  self.emit({
+                    type: "reasoning_delta",
+                    sessionId: self.sessionId,
+                    text: r.text,
+                    timestamp: Date.now(),
+                  } as any);
+                }
+              }
+            }
+            if (delta.toolCalls && delta.toolCalls.length > 0) {
+              for (const tc of delta.toolCalls) {
+                toolCallsToExecute.push({
+                  id: tc.id,
+                  name: tc.name,
+                  args: (tc.arguments as Record<string, unknown>) ?? {},
+                });
+              }
+            }
+            if (delta.finishReason && delta.usage) {
               self.emit({
-                type: "reasoning_delta",
+                type: "turn_usage",
                 sessionId: self.sessionId,
-                text: delta.text,
+                stepIndex,
+                modelId: self.modelId || "default",
+                tier: 1,
+                inputTokens: delta.usage.inputTokens ?? 0,
+                outputTokens: delta.usage.outputTokens ?? 0,
+                reasoningTokens: delta.usage.reasoningTokens ?? 0,
+                costUsd: delta.costUsd ?? 0,
                 timestamp: Date.now(),
               } as any);
-            } else if (delta.type === "tool_call") {
-              toolCallsToExecute.push({
-                id: delta.id,
-                name: delta.name,
-                args: typeof delta.args === "string" ? JSON.parse(delta.args) : (delta.args ?? {}),
-              });
-            } else if (delta.type === "finish") {
-              if (delta.usage) {
-                self.emit({
-                  type: "turn_usage",
-                  sessionId: self.sessionId,
-                  stepIndex,
-                  modelId: self.modelId || "default",
-                  tier: 1,
-                  inputTokens: delta.usage.inputTokens ?? 0,
-                  outputTokens: delta.usage.outputTokens ?? 0,
-                  reasoningTokens: delta.usage.reasoningTokens ?? 0,
-                  costUsd: delta.costUsd ?? 0,
-                  timestamp: Date.now(),
-                } as any);
-              }
             }
           })
         );
@@ -327,7 +334,7 @@ export class EffectHarnessRunner {
           });
 
           // Approval check
-          let approvalDecision = { decision: "approve" as const };
+          let approvalDecision: ToolApprovalDecision = { decision: "approve" };
           if (self.approvalManager) {
             approvalDecision = yield* self.approvalManager.requestApproval({
               sessionId: self.sessionId,
@@ -458,20 +465,22 @@ export class EffectHarnessRunner {
       return finalOutput;
     });
 
-    return program.pipe(
-      Effect.onInterrupt(() =>
-        Effect.promise(async () => {
-          if (self.approvalManager) {
-            await self.approvalManager.cancelPendingApprovals(self.sessionId, runId);
-          }
-          if (self.db) {
-            await self.db
-              .update(sessions)
-              .set({ status: "interrupted", updatedAt: Date.now() })
-              .where(eq(sessions.id, self.sessionId));
-          }
-        })
+    return Effect.scoped(
+      program.pipe(
+        Effect.onInterrupt(() =>
+          Effect.promise(async () => {
+            if (self.approvalManager) {
+              await self.approvalManager.cancelPendingApprovals(self.sessionId, runId);
+            }
+            if (self.db) {
+              await self.db
+                .update(sessions)
+                .set({ status: "interrupted", updatedAt: Date.now() })
+                .where(eq(sessions.id, self.sessionId));
+            }
+          })
+        )
       )
-    );
+    ) as Effect.Effect<string, Error>;
   }
 }

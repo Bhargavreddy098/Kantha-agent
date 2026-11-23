@@ -67,7 +67,6 @@ describe("EffectHarnessRunner Multi-Turn Autonomous Engine", () => {
         stream: () =>
           Effect.succeed(
             Stream.make({
-              type: "text",
               text: "Hello from mock Tier 4",
             })
           ),

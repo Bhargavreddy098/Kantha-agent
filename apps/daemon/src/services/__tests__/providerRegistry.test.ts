@@ -28,11 +28,11 @@ describe("ProviderRegistry Service", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("should sanitize providers and hide raw API keys from client payload", () => {
+  it("should sanitize providers and hide raw API keys from client payload", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kantha-reg-test-"));
     const registry = new ProviderRegistry({ dataDir: tmpDir });
 
-    registry.upsertCustom({
+    await registry.upsertCustom({
       id: "custom_mistral",
       name: "Custom Mistral Endpoint",
       type: "openai_compatible",
@@ -74,11 +74,11 @@ describe("ProviderRegistry Service", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("should persist custom providers and default model across reloads", () => {
+  it("should persist custom providers and default model across reloads", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kantha-reg-test-"));
     const registry1 = new ProviderRegistry({ dataDir: tmpDir });
 
-    registry1.upsertCustom({
+    await registry1.upsertCustom({
       id: "my_vllm",
       name: "My Local vLLM",
       type: "openai_compatible",
@@ -97,16 +97,16 @@ describe("ProviderRegistry Service", () => {
     assert.equal(custom.models[0].id, "qwen-coder");
 
     // Test delete
-    assert.equal(registry2.deleteCustom("my_vllm"), true);
+    assert.equal(await registry2.deleteCustom("my_vllm"), true);
     assert.equal(registry2.getAll().some((p) => p.id === "my_vllm"), false);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("should resolve colon-containing model IDs to the correct provider without splitting error", () => {
+  it("should resolve colon-containing model IDs to the correct provider without splitting error", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kantha-reg-test-"));
     const registry = new ProviderRegistry({ dataDir: tmpDir });
-    registry.upsertCustom({
+    await registry.upsertCustom({
       id: "cent_ai",
       name: "Cent AI",
       type: "openai_compatible",
@@ -139,17 +139,17 @@ describe("ProviderRegistry Service", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("should handle ambiguous model IDs across multiple providers safely", () => {
+  it("should handle ambiguous model IDs across multiple providers safely", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kantha-reg-test-"));
     const registry = new ProviderRegistry({ dataDir: tmpDir });
-    registry.upsertCustom({
+    await registry.upsertCustom({
       id: "provider_a",
       name: "Provider A",
       type: "openai_compatible",
       baseURL: "https://api.a.com/v1",
       models: [{ id: "shared-model-1", name: "Shared Model" }],
     });
-    registry.upsertCustom({
+    await registry.upsertCustom({
       id: "provider_b",
       name: "Provider B",
       type: "openai_compatible",
@@ -180,7 +180,7 @@ describe("ProviderRegistry Service", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("should persist and deduplicate multiple discovered models in custom provider", () => {
+  it("should persist and deduplicate multiple discovered models in custom provider", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kantha-reg-test-"));
     const registry = new ProviderRegistry({ dataDir: tmpDir });
 
@@ -190,7 +190,7 @@ describe("ProviderRegistry Service", () => {
       { id: "model-a", name: "Model A Duplicate" },
     ];
 
-    registry.upsertCustom({
+    await registry.upsertCustom({
       id: "custom_multi",
       name: "Multi Provider",
       type: "openai_compatible",

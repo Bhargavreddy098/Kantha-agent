@@ -1,13 +1,15 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import child_process from "node:child_process";
 import { WebSocketServer } from "ws";
-import { createKanthaDb } from "@kantha/db";
+import { createKanthaDb, sessions, approvals, eq } from "@kantha/db";
 import { EffectHarnessRunner } from "../harness/runner";
 import { ptyManager } from "../pty/manager";
 import type { KanthaEvent } from "@kantha/protocol";
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
+import { ApprovalManager } from "./approvals";
 import {
   PairingTicketRegistry,
   SessionStore,
@@ -49,6 +51,23 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
   const gatewayLayer = createDaemonGatewayLayer({ db, dataDir });
   const providerRegistry = new ProviderRegistry({ dataDir, db, gatewayLayer });
   await providerRegistry.migrateLegacyKeys();
+
+  const approvalManager = new ApprovalManager({ db });
+  const activeRunFibers = new Map<string, { fiber: Fiber.RuntimeFiber<any, any>; runId: string }>();
+
+  // Reboot orphan sweep: clean up interrupted sessions and pending approvals
+  try {
+    await db
+      .update(sessions)
+      .set({ status: "interrupted", updatedAt: Date.now() })
+      .where(eq(sessions.status, "running"));
+    await db
+      .update(approvals)
+      .set({ status: "cancelled" })
+      .where(eq(approvals.status, "pending"));
+  } catch {
+    // ignore
+  }
 
   const initialTicket = ticketRegistry.createTicket();
 
@@ -610,20 +629,124 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       const sessionId = promptMatch[1];
       let body = "";
       req.on("data", (chunk) => (body += chunk));
-      req.on("end", () => {
-        const { prompt } = JSON.parse(body || "{}");
+      req.on("end", async () => {
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(body || "{}");
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Invalid JSON body" }));
+          return;
+        }
+
+        if (!parsed.prompt || typeof parsed.prompt !== "string" || !parsed.prompt.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing or empty prompt" }));
+          return;
+        }
+
+        if (activeRunFibers.has(sessionId)) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Session is currently running" }));
+          return;
+        }
+
+        const runId = `run_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
         const runner = new EffectHarnessRunner({
           sessionId,
           workspacePath,
+          db,
+          gatewayLayer,
+          approvalManager,
+          modelId: parsed.modelId,
+          providerId: parsed.providerId,
+          allowTier4Tools: parsed.allowTier4Tools,
+          autoApprove: parsed.autoApprove,
           onEvent: (event: KanthaEvent) => broadcastEvent(sessionId, event),
         });
 
-        // Run asynchronously via Effect
-        Effect.runPromise(runner.runPrompt(prompt || "Hello Kantha"));
+        const program = runner.runPrompt(parsed.prompt).pipe(
+          Effect.provide(gatewayLayer),
+          Effect.catchAll((err) => {
+            broadcastEvent(sessionId, {
+              type: "token_delta",
+              sessionId,
+              text: `\nError: ${err.message}\n`,
+              timestamp: Date.now(),
+            });
+            return Effect.succeed("");
+          })
+        );
+
+        const fiber = Effect.runFork(program);
+        activeRunFibers.set(sessionId, { fiber, runId });
+        fiber.addObserver(() => {
+          activeRunFibers.delete(sessionId);
+        });
 
         res.writeHead(202, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "accepted", sessionId }));
+        res.end(JSON.stringify({ status: "accepted", sessionId, runId }));
       });
+      return;
+    }
+
+    // Pending Approvals query
+    const approvalsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/approvals$/);
+    if (approvalsMatch && req.method === "GET") {
+      const sessionId = approvalsMatch[1];
+      const pending = await approvalManager.getPendingApprovals(sessionId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ approvals: pending }));
+      return;
+    }
+
+    // Resolve Approval
+    const approvalResolveMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/approvals\/([^/]+)$/);
+    if (approvalResolveMatch && req.method === "POST") {
+      const approvalId = approvalResolveMatch[2];
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(body || "{}");
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Invalid JSON body" }));
+          return;
+        }
+
+        if (!parsed.decision || (parsed.decision !== "approve" && parsed.decision !== "reject")) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Decision must be 'approve' or 'reject'" }));
+          return;
+        }
+
+        await approvalManager.resolveApproval(approvalId, parsed.decision, parsed.feedback);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, approvalId, decision: parsed.decision }));
+      });
+      return;
+    }
+
+    // Session Abort
+    const abortMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/abort$/);
+    if (abortMatch && req.method === "POST") {
+      const sessionId = abortMatch[1];
+      const active = activeRunFibers.get(sessionId);
+      if (active) {
+        await Effect.runPromise(Fiber.interrupt(active.fiber));
+        activeRunFibers.delete(sessionId);
+      }
+      await approvalManager.cancelPendingApprovals(sessionId, active?.runId);
+      if (db) {
+        await db
+          .update(sessions)
+          .set({ status: "interrupted", updatedAt: Date.now() })
+          .where(eq(sessions.id, sessionId));
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: true, aborted: true, sessionId }));
       return;
     }
 
@@ -767,6 +890,9 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
     fencing,
     initialTicket,
     workspace: discoverWorkspace(),
+    db,
+    approvalManager,
+    activeRunFibers,
     close,
   };
 }
