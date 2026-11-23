@@ -260,18 +260,20 @@ export const GatewayServiceLive = Layer.effect(
             }
 
             // Mock streaming for isolated testing
+            const mockUsage: TokenUsage = {
+              inputTokens: 120,
+              outputTokens: 45,
+              reasoningTokens: 0,
+              cacheReadTokens: 0,
+              cacheWrite5mTokens: 0,
+              cacheWrite1hTokens: 0,
+            };
             const mockDeltas: StreamDelta[] = [
               { text: `Mock response from ${req.modelId}` },
               {
                 finishReason: "stop",
-                usage: {
-                  inputTokens: 120,
-                  outputTokens: 45,
-                  reasoningTokens: 0,
-                  cacheReadTokens: 0,
-                  cacheWrite5mTokens: 0,
-                  cacheWrite1hTokens: 0,
-                },
+                usage: mockUsage,
+                costUsd: calculateTurnCost(mockUsage, pricing),
               },
             ];
 
@@ -415,7 +417,8 @@ export const GatewayServiceLive = Layer.effect(
                 else if ((part as any).finishReason === "length") finishReason = "length";
                 else if ((part as any).finishReason === "error") finishReason = "error";
 
-                yield { finishReason, usage } satisfies StreamDelta;
+                const costUsd = calculateTurnCost(usage, pricing);
+                yield { finishReason, usage, costUsd } satisfies StreamDelta;
               } else if (part.type === "error") {
                 streamStatus = "error";
                 const errorMsg =

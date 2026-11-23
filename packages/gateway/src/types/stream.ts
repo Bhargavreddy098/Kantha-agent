@@ -6,6 +6,7 @@ export interface StreamDelta {
   readonly reasonings?: KanthaReasoningBlock[];
   readonly toolCalls?: KanthaToolCall[];
   readonly usage?: TokenUsage;
+  readonly costUsd?: number;
   readonly finishReason?: "stop" | "tool_calls" | "length" | "interrupted" | "error";
 }
 

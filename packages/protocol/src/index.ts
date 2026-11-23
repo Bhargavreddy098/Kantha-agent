@@ -109,11 +109,58 @@ export const StatusChangeEvent = Schema.Struct({
 });
 export type StatusChangeEvent = typeof StatusChangeEvent.Type;
 
+export const StepStartedEvent = Schema.Struct({
+  type: Schema.Literal("step_started"),
+  sessionId: Schema.String,
+  stepIndex: Schema.Number,
+  maxSteps: Schema.Number,
+  timestamp: Schema.Number,
+});
+export type StepStartedEvent = typeof StepStartedEvent.Type;
+
+export const ReasoningDeltaEvent = Schema.Struct({
+  type: Schema.Literal("reasoning_delta"),
+  sessionId: Schema.String,
+  delta: Schema.String,
+  timestamp: Schema.Number,
+});
+export type ReasoningDeltaEvent = typeof ReasoningDeltaEvent.Type;
+
+export const TurnUsageEvent = Schema.Struct({
+  type: Schema.Literal("turn_usage"),
+  sessionId: Schema.String,
+  stepIndex: Schema.Number,
+  modelId: Schema.String,
+  tier: Schema.Literal(1, 2, 3, 4),
+  inputTokens: Schema.Number,
+  outputTokens: Schema.Number,
+  reasoningTokens: Schema.Number,
+  costUsd: Schema.Number,
+  timestamp: Schema.Number,
+});
+export type TurnUsageEvent = typeof TurnUsageEvent.Type;
+
+export const ToolIntentEvent = Schema.Struct({
+  type: Schema.Literal("tool_intent"),
+  sessionId: Schema.String,
+  runId: Schema.String,
+  callId: Schema.String,
+  actionId: Schema.String,
+  toolName: Schema.String,
+  args: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  timestamp: Schema.Number,
+});
+export type ToolIntentEvent = typeof ToolIntentEvent.Type;
+
 export const KanthaEvent = Schema.Union(
   TokenDeltaEvent,
   ToolCallEvent,
   ToolResultEvent,
   ApprovalRequiredEvent,
-  StatusChangeEvent
+  StatusChangeEvent,
+  StepStartedEvent,
+  ReasoningDeltaEvent,
+  TurnUsageEvent,
+  ToolIntentEvent
 );
 export type KanthaEvent = typeof KanthaEvent.Type;
