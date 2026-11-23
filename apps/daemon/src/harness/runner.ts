@@ -216,16 +216,57 @@ export class EffectHarnessRunner {
         }
 
         // Available tools definitions
-        const availableTools: KanthaTool[] = Array.from(toolRegistry.values()).map(
-          (t) => ({
-            name: t.name,
-            description: t.description,
+        const availableTools: KanthaTool[] = [
+          {
+            name: "write_file",
+            description: "Create or overwrite a file with given contents.",
             parameters: {
               type: "object",
-              properties: {},
+              properties: {
+                filePath: { type: "string", description: "Relative path of the file to write" },
+                file_path: { type: "string", description: "Alias for filePath" },
+                path: { type: "string", description: "Alias for filePath" },
+                content: { type: "string", description: "File content to write" },
+              },
+              required: ["content"],
             },
-          })
-        );
+          },
+          {
+            name: "read_file",
+            description: "Read the contents of a text file inside the workspace (capped at 64KB).",
+            parameters: {
+              type: "object",
+              properties: {
+                filePath: { type: "string", description: "Relative path of the file to read" },
+                file_path: { type: "string", description: "Alias for filePath" },
+                path: { type: "string", description: "Alias for filePath" },
+              },
+            },
+          },
+          {
+            name: "list_files",
+            description: "List files and directories within a given directory path.",
+            parameters: {
+              type: "object",
+              properties: {
+                directoryPath: { type: "string", description: "Directory to list (defaults to .)" },
+                directory_path: { type: "string", description: "Alias for directoryPath" },
+                path: { type: "string", description: "Alias for directoryPath" },
+              },
+            },
+          },
+          {
+            name: "execute_command",
+            description: "Execute a command inside the workspace directory.",
+            parameters: {
+              type: "object",
+              properties: {
+                command: { type: "string", description: "Shell command line to execute" },
+              },
+              required: ["command"],
+            },
+          },
+        ];
 
         const inferenceStream = yield* gateway.value.stream({
           providerId: self.providerId || "default",
@@ -379,15 +420,17 @@ export class EffectHarnessRunner {
             toolResult = { error: `Tool ${tc.name} is not registered` };
             isError = true;
           } else {
-            try {
-              toolResult = yield* Effect.tryPromise({
-                try: () =>
-                  tool.execute(tc.args, { workspacePath: self.workspacePath }),
-                catch: (err: any) => new Error(err.message || String(err)),
-              });
-            } catch (err: any) {
-              toolResult = { error: err.message || String(err) };
+            const eitherRes = yield* Effect.either(
+              Effect.tryPromise({
+                try: () => tool.execute(tc.args, { workspacePath: self.workspacePath }),
+                catch: (err: any) => err.message || String(err),
+              })
+            );
+            if (eitherRes._tag === "Left") {
+              toolResult = { error: eitherRes.left };
               isError = true;
+            } else {
+              toolResult = eitherRes.right;
             }
           }
 

@@ -33,6 +33,16 @@ The Web Workbench is implemented in `apps/web` as a clean React 19 SPA communica
 - **Non-Destructive Reconnection UX**: Web Workbench preserves prompt drafts and UI state across daemon restarts, presenting an inline reconnection banner.
 
 ### Automated Test Coverage
+- **Autonomous Harness Runner & Gateway Integration (Milestone 1 100% Complete)**:
+  - Multi-turn autonomous step loop in `EffectHarnessRunner` executing tools (`write_file`, `read_file`, `list_files`, `execute_command`) with ancestor-aware filesystem containment via `resolveSafeWorkspacePath`.
+  - Option B Strict Block on Tier 4 models (`TIER4_TOOLS_BLOCKED`) guarding against tool misuse unless explicitly opted-in via `allowTier4Tools: true`.
+  - Doom-loop guard detecting and halting execution upon 3 consecutive identical failing tool invocations.
+  - Interruptible fiber step loop managed with Effect `Scope`, auto-cancelling pending approvals and marking sessions `interrupted` upon abort or termination.
+  - Scoped durable intent persisted as `action_${runId}_${callId}` before dispatching mutations.
+  - Gated mutations via `ApprovalManager` using Effect `Deferred` suspension, SQLite `approvals` state tracking (`pending`, `approved`, `rejected`, `timed_out`, `cancelled`), and a 10-minute timeout.
+  - REST Session Endpoints: `POST /api/sessions/:id/prompt` (with synchronous 409 Conflict guard on running fibers and 400 validation), `GET /api/sessions/:id/approvals`, `POST /api/sessions/:id/approvals/:approvalId`, and `POST /api/sessions/:id/abort`.
+  - Crash-safe reboot sweep clearing interrupted running sessions and cancelling dangling approvals on daemon startup.
+  - Verified live end-to-end against `https://api.cent-ai.dev/v1` model `hy4-flash:free` autonomously creating workspace files, persisting 5 step checkpoints, recording 400+ session events, and settling usage ledger rows.
 - **Gateway & Upstream Provider Streaming (Phase 1 100% Complete)**:
   - `@kantha/gateway` package fully implemented with 5 Effect ports (`VaultStore`, `ProviderStore`, `UsageLedgerStore`, `CatalogCacheStore`, `MasterKeyProvider`).
   - Upstream provider streaming powered by `@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`, `@ai-sdk/openai`, and `@ai-sdk/google` wrapped with `createQuirksFetch` (pre-flight SSRF enforcement, disabled redirects, body encoding and header quirks).

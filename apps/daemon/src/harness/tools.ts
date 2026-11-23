@@ -61,11 +61,13 @@ export function resolveSafeWorkspacePath(workspacePath: string, relativePath: st
   return realTarget;
 }
 
-export const readFileTool: ToolDefinition<{ filePath: string }, { content: string }> = {
+export const readFileTool: ToolDefinition<{ filePath?: string; file_path?: string; path?: string }, { content: string }> = {
   name: "read_file",
   description: "Read the contents of a file within the workspace (up to 64KB).",
-  execute: async ({ filePath }, ctx) => {
-    const fullPath = resolveSafeWorkspacePath(ctx.workspacePath, filePath);
+  execute: async (args, ctx) => {
+    const targetPath = args.filePath || args.file_path || args.path || (args as any).filename;
+    if (!targetPath) throw new Error("Missing filePath or path parameter");
+    const fullPath = resolveSafeWorkspacePath(ctx.workspacePath, targetPath);
     const MAX_BYTES = 64 * 1024; // 64 KB
     const buffer = Buffer.alloc(MAX_BYTES + 1);
 
@@ -80,7 +82,7 @@ export const readFileTool: ToolDefinition<{ filePath: string }, { content: strin
 
     const slice = buffer.subarray(0, Math.min(bytesRead, MAX_BYTES));
     if (slice.includes(0)) {
-      throw new Error(`Cannot read binary file '${filePath}'.`);
+      throw new Error(`Cannot read binary file '${targetPath}'.`);
     }
 
     let text = slice.toString("utf-8");
@@ -91,22 +93,31 @@ export const readFileTool: ToolDefinition<{ filePath: string }, { content: strin
   },
 };
 
-export const writeFileTool: ToolDefinition<{ filePath: string; content: string }, { bytesWritten: number }> = {
+export const writeFileTool: ToolDefinition<
+  { filePath?: string; file_path?: string; path?: string; content: string },
+  { bytesWritten: number }
+> = {
   name: "write_file",
   description: "Create or overwrite a file with given contents.",
-  execute: async ({ filePath, content }, ctx) => {
-    const fullPath = resolveSafeWorkspacePath(ctx.workspacePath, filePath);
+  execute: async (args, ctx) => {
+    const targetPath = args.filePath || args.file_path || args.path || (args as any).filename;
+    if (!targetPath) throw new Error("Missing filePath or path parameter");
+    const fullPath = resolveSafeWorkspacePath(ctx.workspacePath, targetPath);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
-    await fs.writeFile(fullPath, content, "utf-8");
-    return { bytesWritten: Buffer.byteLength(content, "utf-8") };
+    await fs.writeFile(fullPath, args.content ?? "", "utf-8");
+    return { bytesWritten: Buffer.byteLength(args.content ?? "", "utf-8") };
   },
 };
 
-export const listFilesTool: ToolDefinition<{ directoryPath?: string }, { files: string[] }> = {
+export const listFilesTool: ToolDefinition<
+  { directoryPath?: string; directory_path?: string; path?: string },
+  { files: string[] }
+> = {
   name: "list_files",
   description: "List files and directories within a given directory path.",
-  execute: async ({ directoryPath = "." }, ctx) => {
-    const fullPath = resolveSafeWorkspacePath(ctx.workspacePath, directoryPath);
+  execute: async (args, ctx) => {
+    const targetDir = args.directoryPath || args.directory_path || args.path || (args as any).directory || ".";
+    const fullPath = resolveSafeWorkspacePath(ctx.workspacePath, targetDir);
     const entries = await fs.readdir(fullPath);
     return { files: entries };
   },
