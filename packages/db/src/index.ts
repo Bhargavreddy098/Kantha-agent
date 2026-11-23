@@ -3,7 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 
 export * from "./schema";
-export { eq, and, sql } from "drizzle-orm";
+export { eq, and, sql, desc, asc } from "drizzle-orm";
 
 export const DDL_SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
