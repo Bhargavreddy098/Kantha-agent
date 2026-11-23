@@ -24,7 +24,7 @@ export const approvals = sqliteTable("approvals", {
   callId: text("call_id").notNull(),
   toolName: text("tool_name").notNull(),
   args: text("args").notNull(), // JSON
-  status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
+  status: text("status", { enum: ["pending", "approved", "rejected", "timed_out", "cancelled"] }).notNull().default("pending"),
   createdAt: integer("created_at").notNull(),
 });
 

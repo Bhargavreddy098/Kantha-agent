@@ -38,7 +38,7 @@ export type SubmitPromptRequest = typeof SubmitPromptRequest.Type;
 // 3. Tool & Approval Schemas
 // ==========================================
 
-export const ApprovalStatus = Schema.Literal("pending", "approved", "rejected");
+export const ApprovalStatus = Schema.Literal("pending", "approved", "rejected", "timed_out", "cancelled");
 export type ApprovalStatus = typeof ApprovalStatus.Type;
 
 export const ToolApproval = Schema.Struct({
