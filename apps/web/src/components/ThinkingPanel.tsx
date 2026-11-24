@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Collapsible } from "@astryxdesign/core";
+import { Card, Collapsible, Divider, HStack, Text } from "@astryxdesign/core";
 import { Brain, ChevronDown, ChevronRight } from "lucide-react";
 
 export interface ThinkingPanelProps {
@@ -11,7 +11,7 @@ export interface ThinkingPanelProps {
 export const ThinkingPanel: React.FC<ThinkingPanelProps> = ({
   reasoning,
   isStreaming = false,
-  defaultOpen = true,
+  defaultOpen = false,
 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen || isStreaming);
 
@@ -20,92 +20,72 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = ({
   }
 
   const triggerContent = (
-    <div
-      onClick={() => setIsOpen(!isOpen)}
+    <HStack
+      justify="space-between"
+      align="center"
       style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
         width: "100%",
         padding: "8px 12px",
         cursor: "pointer",
         userSelect: "none",
-        borderLeft: isStreaming ? "2px solid var(--swiss-accent)" : "2px solid var(--swiss-border)",
-        backgroundColor: "var(--swiss-hover)",
-        transition: "background-color 120ms ease",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <HStack align="center" gap="8px">
         <Brain
           size={14}
           style={{
             color: isStreaming ? "var(--swiss-accent)" : "var(--swiss-text-secondary)",
           }}
         />
-        <span
+        <Text
+          size="xs"
+          weight="semibold"
           style={{
-            fontSize: "11px",
-            fontWeight: 700,
-            letterSpacing: "0.08em",
+            fontFamily: "var(--font-mono)",
+            letterSpacing: "0.06em",
             textTransform: "uppercase",
             color: isStreaming ? "var(--swiss-text)" : "var(--swiss-text-secondary)",
           }}
         >
-          {isStreaming ? "Thinking..." : "Thinking Process"}
-        </span>
+          {isStreaming ? "Reasoning Trace (Active)" : "Reasoning Trace"}
+        </Text>
+      </HStack>
 
-        {isStreaming && (
-          <span
-            style={{
-              display: "inline-block",
-              width: "6px",
-              height: "6px",
-              borderRadius: "50%",
-              backgroundColor: "var(--swiss-accent)",
-              marginLeft: "4px",
-            }}
-          />
-        )}
-      </div>
-
-      <div style={{ color: "var(--swiss-text-secondary)", display: "flex", alignItems: "center" }}>
+      <span style={{ color: "var(--swiss-text-secondary)", display: "flex", alignItems: "center" }}>
         {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-      </div>
-    </div>
+      </span>
+    </HStack>
   );
 
   return (
-    <div
+    <Card
+      variant="muted"
+      padding={0}
       style={{
-        margin: "8px 0 16px 0",
+        marginBottom: "14px",
         border: "1px solid var(--swiss-border)",
-        borderLeft: "none",
-        backgroundColor: "var(--swiss-bg)",
-        overflow: "hidden",
+        borderRadius: "2px",
+        backgroundColor: "var(--swiss-surface-muted)",
       }}
     >
-      <Collapsible
-        trigger={triggerContent}
-        isOpen={isOpen}
-        onOpenChange={setIsOpen}
-      >
+      <Collapsible trigger={triggerContent} isOpen={isOpen} onOpenChange={setIsOpen}>
+        <Divider />
         <div
           style={{
             padding: "12px 14px",
-            borderLeft: isStreaming ? "2px solid var(--swiss-accent)" : "2px solid var(--swiss-border)",
-            fontSize: "13px",
+            fontSize: "12px",
             lineHeight: 1.6,
-            fontFamily: "var(--font-mono, monospace)",
+            fontFamily: "var(--font-mono)",
             color: "var(--swiss-text-secondary)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
-            maxHeight: "360px",
+            maxHeight: "320px",
             overflowY: "auto",
           }}
         >
-          {reasoning || (isStreaming ? "Analyzing request and structuring response..." : "")}
+          {reasoning || (isStreaming ? "Synthesizing reasoning steps..." : "")}
         </div>
       </Collapsible>
-    </div>
+    </Card>
   );
 };

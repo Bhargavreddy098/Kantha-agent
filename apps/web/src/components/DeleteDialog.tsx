@@ -1,5 +1,5 @@
 import React from "react";
-import { Dialog, Button } from "@astryxdesign/core";
+import { Button, Dialog, Heading, HStack, Text, VStack } from "@astryxdesign/core";
 
 export interface DeleteDialogProps {
   isOpen: boolean;
@@ -16,7 +16,8 @@ export const DeleteDialog: React.FC<DeleteDialogProps> = ({
 }) => {
   return (
     <Dialog isOpen={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <div
+      <VStack
+        gap="16px"
         style={{
           padding: "24px",
           backgroundColor: "var(--swiss-surface)",
@@ -25,54 +26,33 @@ export const DeleteDialog: React.FC<DeleteDialogProps> = ({
           maxWidth: "440px",
         }}
       >
-        <div
-          style={{
-            fontSize: "12px",
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--swiss-accent)",
-            marginBottom: "12px",
-          }}
-        >
-          Delete Conversation
-        </div>
+        <Heading level={3} style={{ margin: 0, fontSize: "15px", color: "var(--swiss-accent)" }}>
+          Delete Thread
+        </Heading>
 
-        <p
-          style={{
-            fontSize: "14px",
-            lineHeight: 1.6,
-            color: "var(--swiss-text)",
-            margin: "0 0 24px 0",
-          }}
-        >
-          Are you sure you want to permanently delete{" "}
-          <strong>"{title}"</strong>? This will remove all local message history from IndexedDB.
-        </p>
+        <Text size="sm" style={{ lineHeight: 1.6, color: "var(--swiss-text)" }}>
+          Permanently delete &ldquo;{title}&rdquo;? All local messages in this thread will be
+          removed from IndexedDB.
+        </Text>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+        <HStack justify="end" gap="8px">
           <Button label="Cancel" variant="ghost" size="sm" onClick={onClose} type="button">
             Cancel
           </Button>
           <Button
-            label="Delete conversation"
-            variant="primary"
+            label="Delete thread"
+            variant="destructive"
             size="sm"
+            type="button"
             onClick={() => {
               onConfirm();
               onClose();
             }}
-            type="button"
-            style={{
-              backgroundColor: "var(--swiss-accent)",
-              borderColor: "var(--swiss-accent)",
-              color: "#FFFFFF",
-            }}
           >
             Delete
           </Button>
-        </div>
-      </div>
+        </HStack>
+      </VStack>
     </Dialog>
   );
 };

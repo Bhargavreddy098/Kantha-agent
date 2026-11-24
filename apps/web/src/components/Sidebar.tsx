@@ -1,9 +1,19 @@
 import React, { useState } from "react";
-import { Button, IconButton, ScrollableArea } from "@astryxdesign/core";
+import {
+  Button,
+  Divider,
+  HStack,
+  IconButton,
+  List,
+  ListItem,
+  ScrollableArea,
+  Text,
+  TextInput,
+  VStack,
+} from "@astryxdesign/core";
 import {
   Plus,
   Search,
-  X,
   MessageSquare,
   Edit2,
   Trash2,
@@ -53,73 +63,69 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   if (isCollapsed) {
     return (
-      <div
+      <VStack
+        justify="space-between"
+        align="center"
         style={{
           width: "56px",
           height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "space-between",
           borderRight: "1px solid var(--swiss-border)",
           backgroundColor: "var(--swiss-surface)",
-          padding: "16px 0",
+          padding: "14px 0",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
+        <VStack align="center" gap="14px">
           <div
             style={{
-              width: "28px",
-              height: "28px",
+              width: "26px",
+              height: "26px",
               backgroundColor: "var(--swiss-accent)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               color: "#FFFFFF",
+              fontFamily: "var(--font-mono)",
               fontSize: "12px",
-              fontWeight: 800,
-              letterSpacing: "0.05em",
+              fontWeight: 700,
             }}
-            title="Kantha AI"
+            title="Kantha Workbench"
           >
             K
           </div>
 
           <IconButton
-            icon={<Plus size={18} />}
+            icon={<Plus size={16} />}
             label="New Chat"
             variant="ghost"
             size="sm"
             onClick={onNewChat}
           />
-        </div>
+        </VStack>
 
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+        <VStack align="center" gap="8px">
           <IconButton
-            icon={<Settings size={16} />}
+            icon={<Settings size={15} />}
             label="Workbench Settings"
             variant="ghost"
             size="sm"
             onClick={onOpenSettings}
           />
-
           <IconButton
-            icon={themeMode === "light" ? <Moon size={16} /> : <Sun size={16} />}
+            icon={themeMode === "light" ? <Moon size={15} /> : <Sun size={15} />}
             label="Toggle Theme"
             variant="ghost"
             size="sm"
             onClick={onToggleTheme}
           />
-
           <IconButton
-            icon={<ChevronRight size={16} />}
+            icon={<ChevronRight size={15} />}
             label="Expand Sidebar"
             variant="ghost"
             size="sm"
             onClick={onToggleCollapse}
           />
-        </div>
-      </div>
+        </VStack>
+      </VStack>
     );
   }
 
@@ -127,265 +133,167 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (items.length === 0) return null;
 
     return (
-      <div key={label} style={{ marginBottom: "20px" }}>
-        <div
+      <VStack key={label} gap="4px" style={{ marginBottom: "16px", padding: "0 10px" }}>
+        <Text
+          size="xs"
+          weight="semibold"
           style={{
+            fontFamily: "var(--font-mono)",
             fontSize: "10px",
-            fontWeight: 700,
-            letterSpacing: "0.1em",
+            letterSpacing: "0.08em",
             textTransform: "uppercase",
             color: "var(--swiss-text-secondary)",
-            padding: "0 12px 6px 12px",
+            padding: "4px 6px",
           }}
         >
           {label}
-        </div>
+        </Text>
 
-        {items.map((conv) => {
-          const isActive = conv.id === activeConversationId;
-          return (
-            <div
-              key={conv.id}
-              onClick={() => onSelectConversation(conv.id)}
-              style={{
-                position: "relative",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 12px 8px 14px",
-                cursor: "pointer",
-                backgroundColor: isActive ? "var(--swiss-hover)" : "transparent",
-                borderLeft: isActive ? "2px solid var(--swiss-accent)" : "2px solid transparent",
-                marginBottom: "2px",
-                transition: "background-color 120ms ease",
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) e.currentTarget.style.backgroundColor = "var(--swiss-hover)";
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) e.currentTarget.style.backgroundColor = "transparent";
-              }}
-            >
-              <div
+        <List>
+          {items.map((conv) => {
+            const isActive = conv.id === activeConversationId;
+            return (
+              <ListItem
+                key={conv.id}
+                label={
+                  <Text
+                    size="sm"
+                    weight={isActive ? "semibold" : "regular"}
+                    maxLines={1}
+                    style={{
+                      color: isActive ? "var(--swiss-text)" : "var(--swiss-text-secondary)",
+                    }}
+                  >
+                    {conv.title}
+                  </Text>
+                }
+                startContent={
+                  <MessageSquare
+                    size={13}
+                    style={{
+                      color: isActive ? "var(--swiss-accent)" : "var(--swiss-text-secondary)",
+                    }}
+                  />
+                }
+                endContent={
+                  <HStack gap="2px" onClick={(e) => e.stopPropagation()}>
+                    <IconButton
+                      icon={<Edit2 size={12} />}
+                      label={`Rename ${conv.title}`}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setRenamingConv(conv)}
+                    />
+                    <IconButton
+                      icon={<Trash2 size={12} />}
+                      label={`Delete ${conv.title}`}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDeletingConv(conv)}
+                    />
+                  </HStack>
+                }
+                onClick={() => onSelectConversation(conv.id)}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  flex: 1,
+                  backgroundColor: isActive ? "var(--swiss-hover)" : "transparent",
+                  borderRadius: "2px",
+                  cursor: "pointer",
                 }}
-              >
-                <MessageSquare
-                  size={14}
-                  style={{
-                    color: isActive ? "var(--swiss-accent)" : "var(--swiss-text-secondary)",
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: "13px",
-                    fontWeight: isActive ? 600 : 400,
-                    color: "var(--swiss-text)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {conv.title}
-                </span>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "2px",
-                  marginLeft: "8px",
-                  opacity: isActive ? 1 : 0.4,
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  title="Rename"
-                  onClick={() => setRenamingConv(conv)}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    cursor: "pointer",
-                    padding: "4px",
-                    color: "var(--swiss-text-secondary)",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  <Edit2 size={12} />
-                </button>
-                <button
-                  type="button"
-                  title="Delete"
-                  onClick={() => setDeletingConv(conv)}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    cursor: "pointer",
-                    padding: "4px",
-                    color: "var(--swiss-text-secondary)",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              />
+            );
+          })}
+        </List>
+      </VStack>
     );
   };
 
   return (
-    <div
+    <VStack
       style={{
-        width: "280px",
+        width: "272px",
         height: "100%",
-        display: "flex",
-        flexDirection: "column",
         borderRight: "1px solid var(--swiss-border)",
         backgroundColor: "var(--swiss-surface)",
       }}
     >
-      {/* Brand Header */}
-      <div
+      {/* Swiss Brand Header */}
+      <HStack
+        justify="space-between"
+        align="center"
         style={{
-          padding: "16px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
+          height: "52px",
+          padding: "0 14px",
           borderBottom: "1px solid var(--swiss-border)",
+          flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <HStack align="center" gap="10px">
           <div
             style={{
-              width: "12px",
-              height: "12px",
+              width: "10px",
+              height: "10px",
               backgroundColor: "var(--swiss-accent)",
+              flexShrink: 0,
             }}
           />
-          <span
+          <Text
+            size="xs"
+            weight="bold"
             style={{
-              fontSize: "13px",
-              fontWeight: 800,
+              fontFamily: "var(--font-mono)",
               letterSpacing: "0.12em",
               textTransform: "uppercase",
               color: "var(--swiss-text)",
             }}
           >
-            Kantha Swiss
-          </span>
-        </div>
+            KANTHA
+          </Text>
+        </HStack>
 
         <IconButton
-          icon={<ChevronLeft size={16} />}
+          icon={<ChevronLeft size={15} />}
           label="Collapse Sidebar"
           variant="ghost"
           size="sm"
           onClick={onToggleCollapse}
         />
-      </div>
+      </HStack>
 
-      {/* Primary Action: New Chat */}
-      <div style={{ padding: "16px 16px 12px 16px" }}>
+      {/* Primary Action & Search */}
+      <VStack gap="10px" style={{ padding: "14px 12px 12px 12px", flexShrink: 0 }}>
         <Button
           label="Create new chat"
           variant="primary"
           size="md"
+          width="100%"
+          icon={<Plus size={15} />}
           onClick={onNewChat}
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            backgroundColor: "var(--swiss-text)",
-            color: "var(--swiss-surface)",
-            border: "none",
-            borderRadius: "0px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
         >
-          <Plus size={16} />
-          <span>New Chat</span>
+          New Thread
         </Button>
-      </div>
 
-      {/* Search Input */}
-      <div style={{ padding: "0 16px 16px 16px" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            backgroundColor: "var(--swiss-bg)",
-            border: "1px solid var(--swiss-border)",
-            padding: "6px 10px",
-            gap: "8px",
-          }}
-        >
-          <Search size={14} style={{ color: "var(--swiss-text-secondary)", flexShrink: 0 }} />
-          <input
-            type="text"
-            placeholder="Search history..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              border: "none",
-              backgroundColor: "transparent",
-              color: "var(--swiss-text)",
-              fontSize: "12px",
-              width: "100%",
-              outline: "none",
-              fontFamily: "inherit",
-            }}
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              style={{
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                padding: 0,
-                color: "var(--swiss-text-secondary)",
-                display: "flex",
-              }}
-            >
-              <X size={12} />
-            </button>
-          )}
-        </div>
-      </div>
+        <TextInput
+          label="Search threads"
+          isLabelHidden
+          size="sm"
+          placeholder="Filter threads..."
+          value={searchQuery}
+          onChange={setSearchQuery}
+          startIcon={<Search size={13} />}
+          hasClear
+        />
+      </VStack>
+
+      <Divider />
 
       {/* History List */}
-      <div style={{ flex: 1, overflow: "hidden" }}>
-        <ScrollableArea label="Conversation history" style={{ height: "100%", padding: "4px 0" }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <ScrollableArea label="Conversation history" style={{ height: "100%", padding: "8px 0" }}>
           {conversations.length === 0 ? (
-            <div
-              style={{
-                padding: "24px 16px",
-                textAlign: "center",
-                fontSize: "12px",
-                color: "var(--swiss-text-secondary)",
-              }}
-            >
-              {searchQuery ? "No matching conversations." : "No conversation history."}
+            <div style={{ padding: "24px 16px", textAlign: "center" }}>
+              <Text size="xs" style={{ color: "var(--swiss-text-secondary)" }}>
+                {searchQuery ? "No matching threads." : "No saved threads yet."}
+              </Text>
             </div>
           ) : (
             <>
@@ -398,55 +306,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </ScrollableArea>
       </div>
 
-      {/* Pinned Bottom Settings & Controls */}
-      <div
-        style={{
-          borderTop: "1px solid var(--swiss-border)",
-          backgroundColor: "var(--swiss-surface)",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* Settings Action Button */}
-        <div
+      {/* Pinned Footer */}
+      <Divider />
+      <VStack style={{ padding: "10px 12px", gap: "8px", flexShrink: 0 }}>
+        <Button
+          label="Workbench Settings"
+          variant="ghost"
+          size="sm"
+          width="100%"
+          icon={<Settings size={14} />}
           onClick={onOpenSettings}
-          style={{
-            padding: "10px 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            cursor: "pointer",
-            borderBottom: "1px solid var(--swiss-border)",
-            fontSize: "12px",
-            fontWeight: 500,
-            color: "var(--swiss-text)",
-            transition: "background-color 120ms ease",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--swiss-hover)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "transparent";
-          }}
+          style={{ justifyContent: "flex-start" }}
         >
-          <Settings size={15} style={{ color: "var(--swiss-text-secondary)" }} />
-          <span>Workbench Settings</span>
-        </div>
+          Provider &amp; Model Settings
+        </Button>
 
-        {/* Footer Meta & Quick Toggle */}
-        <div
-          style={{
-            padding: "8px 16px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            fontSize: "11px",
-            color: "var(--swiss-text-secondary)",
-          }}
-        >
-          <span style={{ letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600 }}>
-            {conversations.length} {conversations.length === 1 ? "Thread" : "Threads"}
-          </span>
+        <HStack justify="space-between" align="center" style={{ padding: "0 4px" }}>
+          <Text
+            size="xs"
+            hasTabularNumbers
+            style={{
+              fontFamily: "var(--font-mono)",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "var(--swiss-text-secondary)",
+            }}
+          >
+            {conversations.length} {conversations.length === 1 ? "THREAD" : "THREADS"}
+          </Text>
 
           <IconButton
             icon={themeMode === "light" ? <Moon size={14} /> : <Sun size={14} />}
@@ -455,10 +342,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             size="sm"
             onClick={onToggleTheme}
           />
-        </div>
-      </div>
+        </HStack>
+      </VStack>
 
-      {/* Dialogs */}
       {renamingConv && (
         <RenameDialog
           isOpen={Boolean(renamingConv)}
@@ -476,6 +362,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onConfirm={() => deleteConversation(deletingConv.id)}
         />
       )}
-    </div>
+    </VStack>
   );
 };

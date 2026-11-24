@@ -1,22 +1,25 @@
 import type { StoredMessage } from "../db/chatDb";
 
+export interface GatewayFallbackInfo {
+  fromProviderId: string;
+  fromModelId: string;
+  toProviderId: string;
+  toModelId: string;
+  reason: string;
+}
+
 export interface StreamChatOptions {
   messages: StoredMessage[];
   model?: string;
   providerId?: string;
   onToken: (delta: string) => void;
   onReasoning: (delta: string) => void;
+  onFallback?: (info: GatewayFallbackInfo) => void;
   onError: (error: Error) => void;
   onComplete: () => void;
   signal?: AbortSignal;
 }
 
-/**
- * Formats client stored messages into the OpenAI /chat/completions payload format.
- * - Injects extracted text from documents into the user message content.
- * - Formats images as OpenAI vision image_url objects when present.
- * - Omits historical reasoning blocks from assistant turns to prevent upstream API rejection.
- */
 function formatMessagesForPayload(messages: StoredMessage[]) {
   return messages.map((msg) => {
     if (msg.role === "assistant") {
@@ -29,7 +32,6 @@ function formatMessagesForPayload(messages: StoredMessage[]) {
     if (msg.role === "user") {
       let textContent = msg.content || "";
 
-      // Append extracted document context if present
       if (msg.attachments && msg.attachments.length > 0) {
         for (const att of msg.attachments) {
           if (att.extractedText) {
@@ -38,7 +40,6 @@ function formatMessagesForPayload(messages: StoredMessage[]) {
         }
       }
 
-      // Check for image attachments for vision multimodal format
       const imageAttachments = msg.attachments?.filter((a) => Boolean(a.dataUrl)) || [];
 
       if (imageAttachments.length > 0) {
@@ -73,11 +74,18 @@ function formatMessagesForPayload(messages: StoredMessage[]) {
   });
 }
 
-/**
- * Streams real-time AI response from Bun daemon SSE endpoint.
- */
 export async function streamChatResponse(options: StreamChatOptions): Promise<void> {
-  const { messages, model, providerId, onToken, onReasoning, onError, onComplete, signal } = options;
+  const {
+    messages,
+    model,
+    providerId,
+    onToken,
+    onReasoning,
+    onFallback,
+    onError,
+    onComplete,
+    signal,
+  } = options;
 
   try {
     const payloadMessages = formatMessagesForPayload(messages);
@@ -134,6 +142,9 @@ export async function streamChatResponse(options: StreamChatOptions): Promise<vo
 
         try {
           const parsed = JSON.parse(dataStr);
+          if (parsed.fallback) {
+            onFallback?.(parsed.fallback);
+          }
           if (parsed.reasoning) {
             onReasoning(parsed.reasoning);
           }

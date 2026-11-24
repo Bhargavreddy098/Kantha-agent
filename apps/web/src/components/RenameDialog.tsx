@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Dialog, Button } from "@astryxdesign/core";
+import { Button, Dialog, Heading, HStack, TextInput, VStack } from "@astryxdesign/core";
 
 export interface RenameDialogProps {
   isOpen: boolean;
@@ -40,45 +40,34 @@ export const RenameDialog: React.FC<RenameDialogProps> = ({
           maxWidth: "480px",
         }}
       >
-        <div
-          style={{
-            fontSize: "12px",
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--swiss-text-secondary)",
-            marginBottom: "16px",
-          }}
-        >
-          Rename Conversation
-        </div>
+        <VStack gap="16px">
+          <Heading level={3} style={{ margin: 0, fontSize: "15px" }}>
+            Rename Thread
+          </Heading>
 
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          autoFocus
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            fontSize: "14px",
-            fontFamily: "inherit",
-            backgroundColor: "var(--swiss-bg)",
-            color: "var(--swiss-text)",
-            border: "1px solid var(--swiss-border)",
-            outline: "none",
-            marginBottom: "24px",
-          }}
-        />
+          <TextInput
+            label="Thread title"
+            value={title}
+            onChange={setTitle}
+            hasAutoFocus
+            width="100%"
+          />
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-          <Button label="Cancel" variant="ghost" size="sm" onClick={onClose} type="button">
-            Cancel
-          </Button>
-          <Button label="Save" variant="primary" size="sm" type="submit" isDisabled={!title.trim()}>
-            Save
-          </Button>
-        </div>
+          <HStack justify="end" gap="8px">
+            <Button label="Cancel" variant="ghost" size="sm" onClick={onClose} type="button">
+              Cancel
+            </Button>
+            <Button
+              label="Save title"
+              variant="primary"
+              size="sm"
+              type="submit"
+              isDisabled={!title.trim()}
+            >
+              Save
+            </Button>
+          </HStack>
+        </VStack>
       </form>
     </Dialog>
   );

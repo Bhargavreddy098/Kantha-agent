@@ -1,12 +1,18 @@
 import React, { useState, useRef } from "react";
 import {
+  Banner,
+  Button,
   ChatComposer,
-  IconButton,
+  Divider,
   DropdownMenu,
   DropdownMenuGroup,
   DropdownMenuItem,
+  HStack,
+  IconButton,
+  Text,
+  TextInput,
 } from "@astryxdesign/core";
-import { Paperclip, Loader2, Cpu, ChevronDown, Check, Search, X } from "lucide-react";
+import { Paperclip, Loader2, Cpu, ChevronDown, Check, Search } from "lucide-react";
 import { AttachmentChip } from "./AttachmentChip";
 import {
   MAX_FILE_SIZE,
@@ -28,6 +34,8 @@ export interface ComposerProps {
   onSelectModel: (modelId: string) => void;
   providersData: ProvidersDataResponse | null;
   onOpenSettings?: () => void;
+  placeholder?: string;
+  hideAttachments?: boolean;
 }
 
 export const Composer: React.FC<ComposerProps> = ({
@@ -39,6 +47,8 @@ export const Composer: React.FC<ComposerProps> = ({
   onSelectModel,
   providersData,
   onOpenSettings,
+  placeholder = "Type a prompt, or drag and drop images and documents...",
+  hideAttachments = false,
 }) => {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<StoredAttachment[]>([]);
@@ -49,18 +59,23 @@ export const Composer: React.FC<ComposerProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const providersList = providersData?.providers || [];
+  // Put configured providers (like OpenRouter) first so free models are front and center
+  const providersList = [...(providersData?.providers || [])].sort((a, b) => {
+    if (a.id === "openrouter" && a.configured) return -1;
+    if (b.id === "openrouter" && b.configured) return 1;
+    if (a.configured && !b.configured) return -1;
+    if (!a.configured && b.configured) return 1;
+    return 0;
+  });
 
-  // Compute active model display name
-  const allModels =
-    providersList.flatMap((p) =>
-      p.models.map((m) => ({
-        ...m,
-        providerId: p.id,
-        providerName: p.name,
-        fullId: `${p.id}:${m.id}`,
-      }))
-    );
+  const allModels = providersList.flatMap((p) =>
+    p.models.map((m) => ({
+      ...m,
+      providerId: p.id,
+      providerName: p.name,
+      fullId: `${p.id}:${m.id}`,
+    }))
+  );
 
   const currentModelObj = allModels.find(
     (m) => m.fullId === selectedModel || m.id === selectedModel
@@ -73,10 +88,11 @@ export const Composer: React.FC<ComposerProps> = ({
         return selectedModel.slice(p.id.length + 1);
       }
     }
-    return selectedModel || "GPT-4o";
+    return selectedModel || "openrouter/free";
   })();
 
   const handleFiles = async (files: FileList | File[]) => {
+    if (hideAttachments) return;
     setErrorMessage(null);
     const fileArray = Array.from(files);
 
@@ -111,7 +127,6 @@ export const Composer: React.FC<ComposerProps> = ({
             dataUrl,
           });
         } else {
-          // Document: call server extraction
           const extraction = await extractDocumentText(file);
           newAttachments.push({
             id,
@@ -149,17 +164,14 @@ export const Composer: React.FC<ComposerProps> = ({
   };
 
   const drawerContent =
-    attachments.length > 0 || isProcessingFile ? (
-      <div
+    !hideAttachments && (attachments.length > 0 || isProcessingFile) ? (
+      <HStack
+        gap="8px"
         style={{
-          display: "flex",
           flexWrap: "wrap",
-          gap: "8px",
           padding: "8px 12px",
           backgroundColor: "var(--swiss-bg)",
           borderBottom: "1px solid var(--swiss-border)",
-          borderTopLeftRadius: "12px",
-          borderTopRightRadius: "12px",
         }}
       >
         {attachments.map((att) => (
@@ -171,58 +183,59 @@ export const Composer: React.FC<ComposerProps> = ({
         ))}
 
         {isProcessingFile && (
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "4px 8px",
-              fontSize: "12px",
-              color: "var(--swiss-text-secondary)",
-            }}
-          >
+          <HStack align="center" gap="6px" style={{ padding: "4px 8px" }}>
             <Loader2 size={14} className="animate-spin" />
-            <span>Extracting document text...</span>
-          </div>
+            <Text size="xs" style={{ color: "var(--swiss-text-secondary)" }}>
+              Extracting document text...
+            </Text>
+          </HStack>
         )}
-      </div>
+      </HStack>
     ) : undefined;
 
   const query = searchQuery.trim().toLowerCase();
-  const filteredProviders =
-    providersData?.providers
-      ?.map((provider) => {
-        const matchingModels = provider.models.filter(
-          (m) =>
-            !query ||
-            m.name.toLowerCase().includes(query) ||
-            m.id.toLowerCase().includes(query)
-        );
-        return {
-          ...provider,
-          models: matchingModels,
-        };
-      })
-      .filter((p) => p.models.length > 0) || [];
+  const filteredProviders = providersList
+    .map((provider) => {
+      const matchingModels = provider.models.filter(
+        (m) =>
+          !query ||
+          m.name.toLowerCase().includes(query) ||
+          m.id.toLowerCase().includes(query) ||
+          provider.name.toLowerCase().includes(query)
+      );
+      return {
+        ...provider,
+        models: matchingModels,
+      };
+    })
+    .filter((p) => p.models.length > 0);
 
   const footerActionsContent = (
-    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-      {/* Astryx DropdownMenu Model Selector */}
-      {providersData?.providers && providersData.providers.length > 0 && (
+    <HStack align="center" gap="8px">
+      {providersList.length > 0 && (
         <DropdownMenu
           renderTrigger={(triggerProps) => (
-            <button
-              type="button"
-              className="swiss-model-pill"
-              title="Select AI Model"
+            <Button
               {...triggerProps}
+              label={`Select model: ${activeModelDisplayName}`}
+              variant="secondary"
+              size="sm"
+              icon={<Cpu size={13} style={{ color: "var(--swiss-accent)" }} />}
+              endContent={<ChevronDown size={12} />}
             >
-              <Cpu size={13} style={{ color: "var(--swiss-accent)" }} />
-              <span style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span
+                style={{
+                  maxWidth: "200px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "12px",
+                }}
+              >
                 {activeModelDisplayName}
               </span>
-              <ChevronDown size={12} style={{ opacity: 0.6 }} />
-            </button>
+            </Button>
           )}
         >
           {allModels.length > 5 && (
@@ -235,67 +248,38 @@ export const Composer: React.FC<ComposerProps> = ({
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  backgroundColor: "var(--swiss-bg)",
-                  padding: "4px 8px",
-                  border: "1px solid var(--swiss-border)",
-                  borderRadius: "4px",
-                }}
-              >
-                <Search size={12} style={{ color: "var(--swiss-text-secondary)" }} />
-                <input
-                  type="text"
-                  placeholder="Search models..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    outline: "none",
-                    fontSize: "11px",
-                    width: "100%",
-                    color: "var(--swiss-text)",
-                  }}
-                  autoFocus
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    style={{
-                      border: "none",
-                      background: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      color: "var(--swiss-text-secondary)",
-                      display: "flex",
-                    }}
-                  >
-                    <X size={10} />
-                  </button>
-                )}
-              </div>
+              <TextInput
+                label="Search models"
+                isLabelHidden
+                size="sm"
+                placeholder="Filter models..."
+                value={searchQuery}
+                onChange={setSearchQuery}
+                startIcon={<Search size={12} />}
+                hasClear
+              />
             </div>
           )}
 
           {query && filteredProviders.length === 0 && (
-            <div style={{ padding: "8px 12px", fontSize: "11px", color: "var(--swiss-text-secondary)" }}>
-              No models match "{searchQuery}"
+            <div style={{ padding: "8px 12px" }}>
+              <Text size="xs" style={{ color: "var(--swiss-text-secondary)" }}>
+                No models match &quot;{searchQuery}&quot;
+              </Text>
             </div>
           )}
 
           {filteredProviders.map((provider) => (
-            <DropdownMenuGroup key={provider.id} title={`${provider.name} (${provider.models.length})`}>
+            <DropdownMenuGroup
+              key={provider.id}
+              title={`${provider.name}${provider.configured ? "" : " (Unconfigured)"}`}
+            >
               {provider.models.map((m) => {
                 const fullId = `${provider.id}:${m.id}`;
                 const isSelected =
                   selectedModel === fullId ||
-                  (selectedModel === m.id && !providersList.some((p) => selectedModel.startsWith(`${p.id}:`)));
+                  (selectedModel === m.id &&
+                    !providersList.some((p) => selectedModel.startsWith(`${p.id}:`)));
                 return (
                   <DropdownMenuItem
                     key={fullId}
@@ -310,58 +294,62 @@ export const Composer: React.FC<ComposerProps> = ({
               })}
             </DropdownMenuGroup>
           ))}
+
           {onOpenSettings && (
-            <DropdownMenuGroup title="Settings">
-              <DropdownMenuItem
-                label="Configure Providers..."
-                onClick={onOpenSettings}
-              />
+            <DropdownMenuGroup title="Configuration">
+              <DropdownMenuItem label="Configure Providers..." onClick={onOpenSettings} />
             </DropdownMenuGroup>
           )}
         </DropdownMenu>
       )}
 
-      <div style={{ width: "1px", height: "16px", backgroundColor: "var(--swiss-border)" }} />
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept={ACCEPTED_EXTENSIONS.join(",")}
-        style={{ display: "none" }}
-        onChange={(e) => {
-          if (e.target.files) handleFiles(e.target.files);
-        }}
-      />
-      <IconButton
-        icon={<Paperclip size={16} />}
-        label="Attach files or documents"
-        variant="ghost"
-        size="md"
-        isDisabled={isDisabled || isGenerating || isProcessingFile}
-        onClick={() => fileInputRef.current?.click()}
-      />
-    </div>
+      {!hideAttachments && (
+        <>
+          <Divider orientation="vertical" style={{ height: "16px" }} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPTED_EXTENSIONS.join(",")}
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files) handleFiles(e.target.files);
+            }}
+          />
+          <IconButton
+            icon={<Paperclip size={15} />}
+            label="Attach files or documents"
+            variant="ghost"
+            size="sm"
+            isDisabled={isDisabled || isGenerating || isProcessingFile}
+            onClick={() => fileInputRef.current?.click()}
+          />
+        </>
+      )}
+    </HStack>
   );
 
   return (
     <div
-      className="swiss-floating-composer"
+      className="swiss-composer-frame"
       style={{
         position: "relative",
         width: "100%",
-        maxWidth: "850px",
+        maxWidth: "880px",
         margin: "0 auto",
       }}
       onDragOver={(e) => {
+        if (hideAttachments) return;
         e.preventDefault();
         setIsDragOver(true);
       }}
       onDragLeave={(e) => {
+        if (hideAttachments) return;
         e.preventDefault();
         setIsDragOver(false);
       }}
       onDrop={(e) => {
+        if (hideAttachments) return;
         e.preventDefault();
         setIsDragOver(false);
         if (e.dataTransfer.files) {
@@ -375,36 +363,38 @@ export const Composer: React.FC<ComposerProps> = ({
             position: "absolute",
             inset: 0,
             zIndex: 10,
-            backgroundColor: "rgba(248, 248, 246, 0.9)",
-            border: "2px dashed var(--swiss-accent)",
-            borderRadius: "12px",
+            backgroundColor: "rgba(247, 247, 245, 0.92)",
+            border: "1px dashed var(--swiss-accent)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "13px",
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--swiss-accent)",
             pointerEvents: "none",
           }}
         >
-          Drop files to attach
+          <Text
+            size="xs"
+            weight="semibold"
+            style={{
+              fontFamily: "var(--font-mono)",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--swiss-accent)",
+            }}
+          >
+            DROP FILES TO ATTACH
+          </Text>
         </div>
       )}
 
       {errorMessage && (
-        <div
-          style={{
-            margin: "8px 12px",
-            padding: "6px 12px",
-            backgroundColor: "#FEE2E2",
-            borderLeft: "2px solid var(--swiss-accent)",
-            fontSize: "12px",
-            color: "#991B1B",
-          }}
-        >
-          {errorMessage}
+        <div style={{ padding: "8px 10px 0 10px" }}>
+          <Banner
+            status="error"
+            title="Attachment error"
+            description={errorMessage}
+            isDismissable
+            onDismiss={() => setErrorMessage(null)}
+          />
         </div>
       )}
 
@@ -415,7 +405,7 @@ export const Composer: React.FC<ComposerProps> = ({
         onStop={onStop}
         isStopShown={isGenerating}
         isDisabled={isDisabled || isProcessingFile}
-        placeholder="Type a message, or drag and drop images and documents..."
+        placeholder={placeholder}
         elevation="none"
         density="balanced"
         drawer={drawerContent}
@@ -423,7 +413,7 @@ export const Composer: React.FC<ComposerProps> = ({
         style={{
           border: "none",
           backgroundColor: "transparent",
-          borderRadius: "12px",
+          borderRadius: "4px",
         }}
       />
     </div>

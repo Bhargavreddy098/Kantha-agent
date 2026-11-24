@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { ChatMessage, ChatMessageBubble } from "@astryxdesign/core";
+import {
+  Banner,
+  Button,
+  ChatMessage,
+  ChatMessageBubble,
+  Divider,
+  HStack,
+  Text,
+} from "@astryxdesign/core";
 import { Copy, Check, RotateCcw } from "lucide-react";
 import { ThinkingPanel } from "./ThinkingPanel";
 import { SwissMarkdown } from "./SwissMarkdown";
@@ -26,177 +34,116 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     setTimeout(() => setHasCopied(false), 2000);
   };
 
-  const formatTime = (ts: number) => {
-    return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
+  const formatTime = (ts: number) =>
+    new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div
-      style={{
-        padding: "16px 0",
-        borderBottom: "1px solid var(--swiss-border)",
-        width: "100%",
-      }}
-    >
+    <div style={{ padding: "18px 0 0 0", width: "100%" }}>
       <ChatMessage
         sender={isUser ? "user" : "assistant"}
         name={
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "8px",
-            }}
-          >
-            <span
+          <HStack align="center" gap="8px" style={{ marginBottom: "8px" }}>
+            <Text
+              size="xs"
+              weight="semibold"
               style={{
-                width: "6px",
-                height: "6px",
-                backgroundColor: isUser ? "var(--swiss-text)" : "var(--swiss-accent)",
-              }}
-            />
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 700,
+                fontFamily: "var(--font-mono)",
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                color: "var(--swiss-text)",
+                color: isUser ? "var(--swiss-text)" : "var(--swiss-accent)",
               }}
             >
-              {isUser ? "You" : "Kantha Intelligence"}
-            </span>
-            <span
+              {isUser ? "01 / USER" : "02 / KANTHA"}
+            </Text>
+            <Text
+              size="xs"
+              hasTabularNumbers
               style={{
-                fontSize: "11px",
+                fontFamily: "var(--font-mono)",
                 color: "var(--swiss-text-secondary)",
-                marginLeft: "4px",
               }}
             >
               {formatTime(message.timestamp)}
-            </span>
-          </div>
+            </Text>
+          </HStack>
         }
       >
         <ChatMessageBubble variant="ghost" width="100%">
-          {/* User Attachments */}
           {message.attachments && message.attachments.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "8px",
-                marginBottom: "12px",
-              }}
-            >
+            <HStack gap="8px" style={{ flexWrap: "wrap", marginBottom: "12px" }}>
               {message.attachments.map((att) => (
                 <AttachmentChip key={att.id} attachment={att} isReadonly />
               ))}
-            </div>
+            </HStack>
           )}
 
-          {/* Assistant Thinking Panel */}
           {!isUser && (message.reasoning || isStreaming) && (
             <ThinkingPanel reasoning={message.reasoning || ""} isStreaming={isStreaming} />
           )}
 
-          {/* Message Content */}
           {isUser ? (
-            <div
+            <Text
+              as="div"
+              size="md"
               style={{
                 fontSize: "14px",
-                lineHeight: 1.6,
+                lineHeight: 1.65,
                 color: "var(--swiss-text)",
                 whiteSpace: "pre-wrap",
               }}
             >
               {message.content}
-            </div>
+            </Text>
           ) : (
             <div>
               {message.content ? (
                 <SwissMarkdown content={message.content} />
               ) : isStreaming ? (
-                <div
+                <Text
+                  size="sm"
                   style={{
-                    fontSize: "13px",
+                    fontFamily: "var(--font-mono)",
                     color: "var(--swiss-text-secondary)",
-                    fontStyle: "italic",
                   }}
                 >
-                  Generating response...
-                </div>
+                  Streaming response...
+                </Text>
               ) : message.status === "error" ? (
-                <div
-                  style={{
-                    padding: "8px 12px",
-                    backgroundColor: "#FEE2E2",
-                    borderLeft: "2px solid var(--swiss-accent)",
-                    color: "#991B1B",
-                    fontSize: "13px",
-                  }}
-                >
-                  Generation was interrupted or encountered a network error.
-                </div>
+                <Banner
+                  status="error"
+                  title="Generation interrupted"
+                  description="The request could not complete due to an upstream error or cancellation."
+                />
               ) : null}
             </div>
           )}
 
-          {/* Message Actions */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginTop: "12px",
-              opacity: 0.8,
-            }}
-          >
-            <button
-              type="button"
+          <HStack align="center" gap="4px" style={{ marginTop: "10px", marginBottom: "14px" }}>
+            <Button
+              label={hasCopied ? "Copied" : "Copy"}
+              variant="ghost"
+              size="sm"
+              icon={hasCopied ? <Check size={13} /> : <Copy size={13} />}
               onClick={handleCopy}
-              title="Copy message"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                padding: "2px 6px",
-                fontSize: "11px",
-                color: "var(--swiss-text-secondary)",
-              }}
             >
-              {hasCopied ? <Check size={12} color="var(--swiss-accent)" /> : <Copy size={12} />}
-              <span>{hasCopied ? "Copied" : "Copy"}</span>
-            </button>
+              {hasCopied ? "Copied" : "Copy"}
+            </Button>
 
             {!isUser && !isStreaming && onRegenerate && (
-              <button
-                type="button"
+              <Button
+                label="Regenerate response"
+                variant="ghost"
+                size="sm"
+                icon={<RotateCcw size={13} />}
                 onClick={onRegenerate}
-                title="Regenerate response"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  border: "none",
-                  background: "none",
-                  cursor: "pointer",
-                  padding: "2px 6px",
-                  fontSize: "11px",
-                  color: "var(--swiss-text-secondary)",
-                }}
               >
-                <RotateCcw size={12} />
-                <span>Regenerate</span>
-              </button>
+                Regenerate
+              </Button>
             )}
-          </div>
+          </HStack>
         </ChatMessageBubble>
       </ChatMessage>
+      <Divider />
     </div>
   );
 };

@@ -1,5 +1,6 @@
 import React from "react";
-import { FileText, Image as ImageIcon, X } from "lucide-react";
+import { Card, HStack, IconButton, Text, VStack } from "@astryxdesign/core";
+import { FileText, X } from "lucide-react";
 import type { StoredAttachment } from "../db/chatDb";
 
 export interface AttachmentChipProps {
@@ -22,71 +23,60 @@ export const AttachmentChip: React.FC<AttachmentChipProps> = ({
   };
 
   return (
-    <div
+    <Card
+      variant="default"
+      padding={4}
       style={{
         display: "inline-flex",
-        alignItems: "center",
-        gap: "8px",
-        padding: "4px 8px",
-        backgroundColor: "var(--swiss-surface)",
         border: "1px solid var(--swiss-border)",
-        fontSize: "12px",
-        color: "var(--swiss-text)",
+        borderRadius: "2px",
         maxWidth: "240px",
       }}
     >
-      {isImage ? (
-        <img
-          src={attachment.dataUrl}
-          alt={attachment.name}
-          style={{
-            width: "24px",
-            height: "24px",
-            objectFit: "cover",
-            border: "1px solid var(--swiss-border)",
-            flexShrink: 0,
-          }}
-        />
-      ) : (
-        <FileText size={16} style={{ color: "var(--swiss-text-secondary)", flexShrink: 0 }} />
-      )}
+      <HStack align="center" gap="8px">
+        {isImage ? (
+          <img
+            src={attachment.dataUrl}
+            alt={attachment.name}
+            style={{
+              width: "24px",
+              height: "24px",
+              objectFit: "cover",
+              border: "1px solid var(--swiss-border)",
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <FileText size={15} style={{ color: "var(--swiss-text-secondary)", flexShrink: 0 }} />
+        )}
 
-      <div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <span
-          style={{
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            fontWeight: 500,
-          }}
-          title={attachment.name}
-        >
-          {attachment.name}
-        </span>
-        <span style={{ fontSize: "10px", color: "var(--swiss-text-secondary)" }}>
-          {formatSize(attachment.size)}
-        </span>
-      </div>
+        <VStack style={{ overflow: "hidden" }}>
+          <Text size="xs" weight="medium" maxLines={1}>
+            {attachment.name}
+          </Text>
+          <Text
+            size="xs"
+            hasTabularNumbers
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "10px",
+              color: "var(--swiss-text-secondary)",
+            }}
+          >
+            {formatSize(attachment.size)}
+          </Text>
+        </VStack>
 
-      {!isReadonly && onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          title="Remove attachment"
-          style={{
-            border: "none",
-            background: "none",
-            cursor: "pointer",
-            padding: "2px",
-            color: "var(--swiss-text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            marginLeft: "4px",
-          }}
-        >
-          <X size={12} />
-        </button>
-      )}
-    </div>
+        {!isReadonly && onRemove && (
+          <IconButton
+            icon={<X size={12} />}
+            label={`Remove ${attachment.name}`}
+            variant="ghost"
+            size="sm"
+            onClick={onRemove}
+          />
+        )}
+      </HStack>
+    </Card>
   );
 };

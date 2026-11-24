@@ -74,6 +74,13 @@ describe("EffectHarnessRunner Multi-Turn Autonomous Engine", () => {
         passthrough: () => Effect.succeed(null),
         getCatalog: () => Effect.die("not implemented"),
         testConnection: () => Effect.die("not implemented"),
+        getHealth: () =>
+          Effect.succeed({
+            status: "healthy",
+            updatedAt: Date.now(),
+            providers: [],
+            totals: { requests: 0, successes: 0, failures: 0, retries: 0, fallbacks: 0 },
+          }),
       })
     );
 
@@ -91,6 +98,94 @@ describe("EffectHarnessRunner Multi-Turn Autonomous Engine", () => {
     const program = runner.runPrompt("Hi");
     const output = await Effect.runPromise(program.pipe(Effect.provide(MockGateway)));
     assert.ok(typeof output === "string");
+  });
+
+  it("executes multi-turn parallel read tools and delivers toolResults to the next inference step", async () => {
+    fs.writeFileSync(path.join(tmpDir, "notes.txt"), "Kantha orchestrator marker", "utf-8");
+
+    let callNum = 0;
+    let receivedToolResultsCount = 0;
+    const emittedTypes: string[] = [];
+
+    const MockGateway = Layer.succeed(
+      GatewayService,
+      GatewayService.of({
+        stream: (req) => {
+          callNum++;
+          if (callNum === 1) {
+            return Effect.succeed(
+              Stream.make({
+                toolCalls: [
+                  { id: "tc_1", name: "list_files", arguments: { directoryPath: "." } },
+                  { id: "tc_2", name: "read_file", arguments: { filePath: "notes.txt" } },
+                ],
+                finishReason: "tool_calls" as const,
+              })
+            );
+          }
+          const toolMsg = req.messages.find((m) => m.role === "tool");
+          receivedToolResultsCount = toolMsg?.toolResults?.length ?? 0;
+          return Effect.succeed(
+            Stream.make(
+              { text: "Verified notes.txt successfully." },
+              {
+                finishReason: "stop" as const,
+                usage: {
+                  inputTokens: 100,
+                  outputTokens: 20,
+                  reasoningTokens: 0,
+                  cacheReadTokens: 0,
+                  cacheWrite5mTokens: 0,
+                  cacheWrite1hTokens: 0,
+                },
+                costUsd: 0,
+              }
+            )
+          );
+        },
+        complete: () => Effect.die("not implemented"),
+        passthrough: () => Effect.succeed(null),
+        getCatalog: () => Effect.die("not implemented"),
+        testConnection: () => Effect.die("not implemented"),
+        getHealth: () =>
+          Effect.succeed({
+            status: "healthy",
+            updatedAt: Date.now(),
+            providers: [],
+            totals: { requests: 0, successes: 0, failures: 0, retries: 0, fallbacks: 0 },
+          }),
+      })
+    );
+
+    await db.insert(sessions).values({
+      id: "s-multiturn",
+      title: "Multi-turn tool test",
+      workspacePath: tmpDir,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const runner = new EffectHarnessRunner({
+      sessionId: "s-multiturn",
+      workspacePath: tmpDir,
+      db,
+      gatewayLayer: MockGateway,
+      approvalManager,
+      modelId: "openrouter/free",
+      providerId: "openrouter",
+      onEvent: (evt) => emittedTypes.push(evt.type),
+    });
+
+    const output = await Effect.runPromise(
+      runner.runPrompt("Inspect notes.txt").pipe(Effect.provide(MockGateway))
+    );
+    assert.equal(output, "Verified notes.txt successfully.");
+    assert.equal(callNum, 2);
+    assert.equal(receivedToolResultsCount, 2);
+    assert.ok(emittedTypes.includes("orchestrator_phase"));
+    assert.ok(emittedTypes.includes("plan_update"));
+    assert.ok(emittedTypes.includes("tool_intent"));
+    assert.ok(emittedTypes.includes("tool_result"));
   });
 
   it("detects and breaks doom loops after 3 consecutive identical failing tool calls", async () => {

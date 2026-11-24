@@ -1,22 +1,21 @@
 # Current Development State
 
-**Updated 2026-11-21** · [Development guide](README.md) · [Architecture Overview](architecture/overview.md) · [Technology Stack](technology/STACK.md)
+**Updated 2026-11-24** · [Development guide](README.md) · [Architecture Overview](architecture/overview.md) · [Gateway Resilience](architecture/gateway-resilience.md) · [Harness Orchestrator](architecture/harness-orchestrator.md) · [Harness Tools](architecture/harness-tools.md)
 
-Kantha is an autonomous, high-performance, local-first AI coding assistant and daemon workbench modeled on modern assistants (OpenCode, Cursor, Claude Code). The legacy manual access token login screens and cloud database dependencies have been eliminated in favor of **Automatic Local Session Authentication** ([ADR-007](decisions/ADR-007-automatic-local-session-authentication.md)), **strict Host/Origin fencing**, and **automatic workspace discovery**.
-
-The Web Workbench is implemented in `apps/web` as a clean React 19 SPA communicating with the Bun daemon over local loopback HTTP, SSE, and WebSockets.
+Kantha is an autonomous, high-performance, local-first AI coding assistant and daemon workbench featuring a hardened multi-provider LLM gateway, a multi-phase autonomous harness orchestrator with 10 workspace-confined tools, **Automatic Local Session Authentication** ([ADR-007](decisions/ADR-007-automatic-local-session-authentication.md)), **strict Host/Origin fencing**, and a **Swiss International Style + Geist** Web Workbench built exclusively with **Astryx Design** components (`@astryxdesign/core`).
 
 ---
 
 ## 1. Architecture Baseline
 
-| Question | Current Answer |
+| Area | Current Implementation |
 | :--- | :--- |
-| **What is the architecture baseline?** | [Technology Stack Specification](technology/STACK.md), [Runtime Topology](technology/RUNTIME-TOPOLOGY.md), [Database Strategy](technology/DATABASE-STRATEGY.md), and [Monorepo Code Structure](code-structure.md). |
-| **What is the runtime & monorepo stack?** | **Turborepo + Bun** monorepo, **Bun v1.4+** daemon runtime, **Effect-TS (`effect` + `HttpApi` + `Schema`)**, **Vercel AI SDK + Custom Effect Harness (OpenCode V2)**, **bun:sqlite + Drizzle ORM + JSONL** persistence, **Vite + React 19 + TanStack Router/Query + Astryx** SPA, and **React Ink** CLI. |
-| **How is onboarding & authentication handled?** | **Automatic Local Session Authentication ([ADR-007](decisions/ADR-007-automatic-local-session-authentication.md))**: Zero manual login prompts or token entry. The daemon generates in-memory session authority and an ephemeral single-use **Pairing Ticket** (`#ticket=...`), which the browser SPA exchanges for an `HttpOnly`, `SameSite=Strict`, port-scoped cookie (`kantha_session_<port>`). All REST, SSE, and WebSocket PTY endpoints enforce fail-closed Host validation, strict Origin checks, and pre-upgrade WebSocket authentication. |
-| **What is the state of the Desktop Shell?** | Deferred to a later phase (Tauri v2 will wrap the compiled Vite SPA once daemon and web core stabilize). |
-| **Which approvals are open?** | SDD Gate 2 Technology Stack and Architecture Specifications approved for planning. |
+| **Runtime & Persistence** | Node.js 22 (`tsx` + `node:sqlite` via `drizzle-orm/sqlite-proxy`, alongside `bun:sqlite` compatibility), Effect-TS runtime, SQLite + JSONL durable event log. |
+| **Hardened Gateway (`@kantha/gateway`)** | Per-target `CircuitBreakerRegistry` (`closed`/`open`/`half_open`), deterministic error classification (`429`/`5xx`/timeouts/network vs `401`/`402`), exponential backoff honoring `Retry-After`, zero-duplicate model failover chains, AI SDK v7 `tool({ inputSchema: jsonSchema(...) })`, SSRF-guarded fetch with timeouts, OpenRouter attribution headers, and live `GET /api/gateway/health`. See [Gateway Resilience](architecture/gateway-resilience.md). |
+| **OpenRouter Free-Tier Routing** | Curated tool-capable `:free` models (`openrouter/free`, `google/gemma-4-31b-it:free`, `google/gemma-4-26b-a4b-it:free`, `nvidia/nemotron-3.5-lightning:free`, `nvidia/nemotron-3-ultra-550b-a55b:free`, `inclusionai/ling-3.2-flash:free`) defaulted automatically when `OPENROUTER_API_KEY` is configured, backed by automatic 3-model free failover chains. |
+| **Multi-Phase Harness Orchestrator** | Structured **Plan → Execute → Verify** orchestrator (`apps/daemon/src/harness/orchestrator.ts` + `runner.ts`) with parallel read-only tool batching, sequential approval-gated writes (`ApprovalManager` emitting immediate `approval_required` SSE), durable `tool_intent` (`action_${runId}_${callId}`), spec-compliant multi-turn `toolCalls`/`toolResults` history, 64KB character-budget context compaction, doom-loop guard, and Tier 4 guard. See [Harness Orchestrator](architecture/harness-orchestrator.md). |
+| **10-Tool Workspace Suite** | `inspect_workspace`, `read_file` (with line slicing), `list_files` (recursive/depth), `write_file`, `edit_file`, `delete_file`, `glob_files`, `grep_search`, `git_status` (no shell interpolation), and `execute_command` (destructive-command blocklist + 32KB output caps + timeout tree kill), exposed via `GET /api/harness/tools`. See [Harness Tools](architecture/harness-tools.md). |
+| **Web Workbench (`apps/web`)** | **Swiss International Typographic Style** paired with **Geist** & **Geist Mono** typography and **Astryx Design (`@astryxdesign/core`) components only**. Includes three first-class modes via Astryx `TopNav` + `SegmentedControl`: **Chat**, **Harness** (live plan `Stepper`, `ChatToolCalls`, inline approval `Banner`s, step budget `ProgressBar`, `Switch` auto-approve toggle), and **Inspector** (live gateway circuit breakers, ledger rollups, and 10-tool JSON schema browser). |
 
 ---
 
@@ -27,23 +26,15 @@ The Web Workbench is implemented in `apps/web` as a clean React 19 SPA communica
 - **Atomic Pairing Ticket Registry**: 60-second TTL single-use pairing tickets with atomic delete-on-read lookups, preventing replay and concurrent pairing races.
 - **Fragment Delivery & Purge**: Initial browser launch URL delivers ticket via `#ticket=...` fragment; the SPA extracts it and immediately purges the fragment via `history.replaceState({}, '', '/')` before issuing the exchange POST request.
 - **Dual Ingress Fencing**: Fail-closed `Host` header check defeats DNS rebinding; strict `Origin` header validation blocks cross-site browser requests; `Sec-Fetch-Site: cross-site` requests are rejected.
-- **Port-Scoped Cookie**: Sets `kantha_session_<port>` with `HttpOnly`, `SameSite=Strict`, and conditionally `Secure`.
+- **Port-Scoped Cookie**: Sets `kantha_session_<port>` with `HttpOnly`, `SameSite=Strict`/`SameSite=Lax`, and `SameSite=None; Secure` under HTTPS preview iframes.
 - **Pre-Upgrade WebSocket Security**: Validates Host, Origin, and session cookie before completing WebSocket upgrade; invalidates and forcefully terminates active WebSockets (close code `4001`) upon session expiry.
 - **Protected CLI Credential Transport**: `~/.kantha/daemon_<port>.token` created with exclusive mode and restrictive OS permissions (`0600` on POSIX, restricted user ACLs on Windows), verified using `crypto.timingSafeEqual`.
-- **Non-Destructive Reconnection UX**: Web Workbench preserves prompt drafts and UI state across daemon restarts, presenting an inline reconnection banner.
+- **Non-Destructive Reconnection UX**: Web Workbench preserves prompt drafts and UI state across daemon restarts.
 
 ### Automated Test Coverage
-- **Autonomous Harness Runner & Gateway Integration (Milestone 1 100% Complete)**:
-  - Multi-turn autonomous step loop in `EffectHarnessRunner` executing tools (`write_file`, `read_file`, `list_files`, `execute_command`) with ancestor-aware filesystem containment via `resolveSafeWorkspacePath`.
-  - Option B Strict Block on Tier 4 models (`TIER4_TOOLS_BLOCKED`) guarding against tool misuse unless explicitly opted-in via `allowTier4Tools: true`.
-  - Doom-loop guard detecting and halting execution upon 3 consecutive identical failing tool invocations.
-  - Interruptible fiber step loop managed with Effect `Scope`, auto-cancelling pending approvals and marking sessions `interrupted` upon abort or termination.
-  - Scoped durable intent persisted as `action_${runId}_${callId}` before dispatching mutations.
-  - Gated mutations via `ApprovalManager` using Effect `Deferred` suspension, SQLite `approvals` state tracking (`pending`, `approved`, `rejected`, `timed_out`, `cancelled`), and a 10-minute timeout.
-  - REST Session Endpoints: `POST /api/sessions/:id/prompt` (with synchronous 409 Conflict guard on running fibers and 400 validation), `GET /api/sessions/:id/approvals`, `POST /api/sessions/:id/approvals/:approvalId`, and `POST /api/sessions/:id/abort`.
-  - Crash-safe reboot sweep clearing interrupted running sessions and cancelling dangling approvals on daemon startup.
-  - Verified live end-to-end against `https://api.cent-ai.dev/v1` model `hy4-flash:free` autonomously creating workspace files, persisting 5 step checkpoints, recording 400+ session events, and settling usage ledger rows.
-- **Gateway & Upstream Provider Streaming (Phase 1 100% Complete)**:
+- **Gateway Resilience & Circuit Breakers**: Unit tests in `packages/gateway/src/resilience/__tests__/circuit-breaker.test.ts` verifying error classification, `Retry-After` backoff, `closed` → `open` → `half_open` → `closed` transitions, and latency EMA/failover snapshots.
+- **Harness Orchestrator & 10-Tool Suite**: Unit tests in `apps/daemon/src/harness/__tests__/orchestrator.test.ts`, `tools.test.ts`, and `runner.test.ts` verifying Plan → Execute → Verify transitions, parallel read vs. sequential write partitioning, context compaction, multi-turn `toolCalls`/`toolResults` persistence, path traversal/symlink containment, destructive command blocking, Tier 4 guard, and doom-loop detection.
+- **Gateway & Upstream Provider Streaming**:
   - `@kantha/gateway` package fully implemented with 5 Effect ports (`VaultStore`, `ProviderStore`, `UsageLedgerStore`, `CatalogCacheStore`, `MasterKeyProvider`).
   - Upstream provider streaming powered by `@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`, `@ai-sdk/openai`, and `@ai-sdk/google` wrapped with `createQuirksFetch` (pre-flight SSRF enforcement, disabled redirects, body encoding and header quirks).
   - Hardened SSE lifecycle in `/api/chat/stream` with pre-flight status mapping (HTTP 402/404/500 JSON), immediate `res.flushHeaders()`, mid-flight error chunk handling, 15s SSE comment heartbeats (`: ping\n\n`) cleared cleanly via `Effect.ensuring(res.end())`, and client disconnect detection attached to `res.on("close")` guarded by `!res.writableEnded`.
