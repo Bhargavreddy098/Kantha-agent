@@ -2,7 +2,7 @@ import { Context, Effect, Layer } from "effect";
 import { CatalogCacheStore, CatalogError } from "../ports/cache";
 import type { ModelCatalog, ModelDefinition, ModelPricing, ModelCapabilities } from "../types/catalog";
 import { deriveModelTier } from "./tiers";
-import bundledSnapshot from "./snapshot.json";
+import bundledSnapshot from "./snapshot.json" with { type: "json" };
 
 export interface CatalogService {
   readonly getCatalog: () => Effect.Effect<ModelCatalog, CatalogError>;

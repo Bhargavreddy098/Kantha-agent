@@ -5,17 +5,17 @@
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun run src/index.ts",
+    "dev": "tsx src/index.ts",
+    "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.105",
     "@ai-sdk/openai": "^4.0.115",
     "@ai-sdk/openai-compatible": "^3.0.92",
-    "@kantha/db": "workspace:*",
-    "@kantha/gateway": "workspace:*",
-    "@kantha/protocol": "workspace:*",
+    "@kantha/db": "*",
+    "@kantha/gateway": "*",
+    "@kantha/protocol": "*",
     "ai": "^7.0.170",
     "effect": "^3.13.0",
     "mammoth": "^1.13.0",

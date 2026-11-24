@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kantha/protocol": "workspace:*",
+    "@kantha/protocol": "*",
     "ink": "^5.1.0",
     "ink-spinner": "^5.0.0",
     "meow": "^13.2.0",

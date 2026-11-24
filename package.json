@@ -1,1 +1,24 @@
-{"name":"kantha-agent-monorepo","version":"0.1.0","private":true,"workspaces":["apps/*","packages/*"],"scripts":{"dev":"pnpm --parallel --filter @kantha/daemon --filter @kantha/web dev","dev:daemon":"pnpm --filter @kantha/daemon dev","dev:web":"pnpm --filter @kantha/web dev","dev:cli":"pnpm --filter @kantha/cli dev","build":"pnpm -r build","typecheck":"pnpm -r typecheck","test":"pnpm -r test"},"devDependencies":{"turbo":"^2.4.0","typescript":"^5.7.3"}}
+{
+  "name": "kantha-agent-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build --workspace=@kantha/web && npm run dev --workspace=@kantha/daemon",
+    "start": "npm run start --workspace=@kantha/daemon",
+    "dev:daemon": "npm run dev --workspace=@kantha/daemon",
+    "dev:web": "npm run dev --workspace=@kantha/web",
+    "dev:cli": "npm run dev --workspace=@kantha/cli",
+    "build": "npm run build --workspace=@kantha/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run typecheck --workspace=@kantha/web",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.3"
+  }
+}

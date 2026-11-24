@@ -44,10 +44,20 @@ export class IngressFencing {
       }
     }
 
-    // Support KANTHA_ALLOWED_ORIGINS environment variable
-    if (typeof process !== "undefined" && process.env?.KANTHA_ALLOWED_ORIGINS) {
-      const envOrigins = process.env.KANTHA_ALLOWED_ORIGINS.split(",").map((s) => s.trim().toLowerCase());
-      for (const o of envOrigins) {
+    // Support KANTHA_ALLOWED_ORIGINS, APP_URL, and SHARED_APP_URL environment variables
+    if (typeof process !== "undefined" && process.env) {
+      const envOriginList: string[] = [];
+      if (process.env.KANTHA_ALLOWED_ORIGINS) {
+        envOriginList.push(...process.env.KANTHA_ALLOWED_ORIGINS.split(","));
+      }
+      if (process.env.APP_URL) {
+        envOriginList.push(process.env.APP_URL);
+      }
+      if (process.env.SHARED_APP_URL) {
+        envOriginList.push(process.env.SHARED_APP_URL);
+      }
+      for (const raw of envOriginList) {
+        const o = raw.trim().toLowerCase().replace(/\/+$/, "");
         if (o) {
           this.allowedOrigins.add(o);
           try {
@@ -74,6 +84,11 @@ export class IngressFencing {
     }
   }
 
+  private isTrustedPreviewHost(host: string): boolean {
+    if (!this.devOriginAllowed) return false;
+    return /^ais-(dev|pre)-[a-z0-9-]+\.[a-z0-9-]+\.run\.app$/i.test(host);
+  }
+
   /**
    * Validates Host header against configured loopback listener.
    * Defends against DNS rebinding (e.g. Host: evil.com).
@@ -84,7 +99,7 @@ export class IngressFencing {
     }
 
     const normalized = hostHeader.trim().toLowerCase();
-    return this.allowedHosts.has(normalized);
+    return this.allowedHosts.has(normalized) || this.isTrustedPreviewHost(normalized);
   }
 
   /**
@@ -97,7 +112,18 @@ export class IngressFencing {
     }
 
     const normalized = originHeader.trim().toLowerCase().replace(/\/+$/, "");
-    return this.allowedOrigins.has(normalized);
+    if (this.allowedOrigins.has(normalized)) {
+      return true;
+    }
+    try {
+      const parsed = new URL(normalized);
+      if (parsed.protocol === "https:" && this.isTrustedPreviewHost(parsed.host)) {
+        return true;
+      }
+    } catch {
+      // invalid URL
+    }
+    return false;
   }
 
 

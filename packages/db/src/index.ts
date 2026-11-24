@@ -94,11 +94,48 @@ export async function createKanthaDb(options: KanthaDbOptions = {}) {
     sqlite.exec("PRAGMA busy_timeout = 5000;");
     sqlite.exec(DDL_SCHEMA);
     db = drizzle(sqlite, { schema });
+  } else {
+    // Node.js 22+ built-in node:sqlite runtime via drizzle-orm/sqlite-proxy
+    const { DatabaseSync } = await import("node:sqlite" as any);
+    const { drizzle } = await import("drizzle-orm/sqlite-proxy");
+    sqlite = sqlite || new DatabaseSync(dbPath);
+    sqlite.exec("PRAGMA journal_mode = WAL;");
+    sqlite.exec("PRAGMA synchronous = NORMAL;");
+    sqlite.exec("PRAGMA foreign_keys = ON;");
+    sqlite.exec("PRAGMA busy_timeout = 5000;");
+    sqlite.exec(DDL_SCHEMA);
+
+    const normalizeParam = (p: unknown) => {
+      if (typeof p === "boolean") return p ? 1 : 0;
+      if (p === undefined) return null;
+      return p;
+    };
+
+    db = drizzle(
+      async (sqlStr: string, params: unknown[], method: "run" | "all" | "values" | "get") => {
+        const stmt = sqlite.prepare(sqlStr);
+        const bound = params.map(normalizeParam);
+        if (method === "run") {
+          stmt.run(...bound);
+          return { rows: [] };
+        }
+        if (typeof stmt.setReturnArrays === "function") {
+          stmt.setReturnArrays(true);
+        }
+        if (method === "get") {
+          const row = stmt.get(...bound);
+          return { rows: row as any };
+        }
+        const rows = stmt.all(...bound);
+        return { rows: rows as any[] };
+      },
+      { schema }
+    );
   }
 
   if (!db) {
     throw new Error(
-      "Failed to initialize Kantha database: SQLite database driver could not be loaded. Please ensure you are running under Bun runtime (bun run or bun --watch)."
+      "Failed to initialize Kantha database: SQLite database driver could not be loaded."
     );
   }
 

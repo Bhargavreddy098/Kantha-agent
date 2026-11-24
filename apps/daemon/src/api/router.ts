@@ -23,6 +23,7 @@ import { createDaemonGatewayLayer } from "../services/gateway";
 
 export interface DaemonServerOptions {
   port?: number;
+  host?: string;
   dbPath?: string;
   workspacePath?: string;
   devOriginAllowed?: boolean;
@@ -31,6 +32,7 @@ export interface DaemonServerOptions {
 
 export async function startDaemonServer(options: DaemonServerOptions = {}) {
   const port = options.port || 4000;
+  const host = options.host || "127.0.0.1";
   const workspacePath = options.workspacePath || process.cwd();
   const dataDir =
     options.dataDir ||
@@ -188,6 +190,9 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
   };
 
   const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
+    const pathname = url.pathname;
+
     // 1. Mandatory Fail-Closed Host Validation (Defending against DNS Rebinding)
     if (!fencing.isHostValid(req.headers.host)) {
       res.writeHead(403, { "Content-Type": "application/json" });
@@ -195,7 +200,59 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       return;
     }
 
-    // 1b. Defense in Depth: Sec-Fetch-Site Validation
+    // Serve static SPA assets for non-API, non-WS GET/HEAD requests before API auth/Sec-Fetch-Site gates
+    // (Allows initial iframe navigation and static asset loading cleanly)
+    if (
+      (req.method === "GET" || req.method === "HEAD") &&
+      !pathname.startsWith("/api") &&
+      !pathname.startsWith("/ws") &&
+      pathname !== "/health"
+    ) {
+      const webDistPath = path.resolve(workspacePath, "apps/web/dist");
+      if (fs.existsSync(webDistPath)) {
+        const safeRel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+        const resolvedCandidate = path.resolve(webDistPath, safeRel);
+        const insideDist =
+          resolvedCandidate === webDistPath ||
+          resolvedCandidate.startsWith(webDistPath + path.sep);
+        const targetFile =
+          insideDist && fs.existsSync(resolvedCandidate) && fs.statSync(resolvedCandidate).isFile()
+            ? resolvedCandidate
+            : !path.extname(safeRel)
+            ? path.join(webDistPath, "index.html")
+            : null;
+
+        if (targetFile && fs.existsSync(targetFile) && fs.statSync(targetFile).isFile()) {
+          const ext = path.extname(targetFile).toLowerCase();
+          const mimeTypes: Record<string, string> = {
+            ".html": "text/html; charset=utf-8",
+            ".js": "text/javascript; charset=utf-8",
+            ".mjs": "text/javascript; charset=utf-8",
+            ".css": "text/css; charset=utf-8",
+            ".json": "application/json; charset=utf-8",
+            ".svg": "image/svg+xml",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".ico": "image/x-icon",
+            ".woff": "font/woff",
+            ".woff2": "font/woff2",
+            ".map": "application/json",
+            ".txt": "text/plain; charset=utf-8",
+          };
+          res.writeHead(200, { "Content-Type": mimeTypes[ext] || "application/octet-stream" });
+          if (req.method === "HEAD") {
+            res.end();
+          } else {
+            fs.createReadStream(targetFile).pipe(res);
+          }
+          return;
+        }
+      }
+    }
+
+    // 1b. Defense in Depth: Sec-Fetch-Site Validation for API endpoints
     if (!fencing.isFetchSiteValid(req.headers["sec-fetch-site"] as string | undefined)) {
       res.writeHead(403, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Forbidden: Cross-site request rejected" }));
@@ -223,9 +280,6 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       res.end();
       return;
     }
-
-    const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
-    const pathname = url.pathname;
 
     // Health check endpoint (Readiness probes)
     if (pathname === "/health" && req.method === "GET") {
@@ -339,11 +393,11 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
       const isSecure =
         req.headers["x-forwarded-proto"] === "https" ||
         Boolean((req.socket as any).encrypted);
-      const secureAttr = isSecure ? "; Secure" : "";
+      const sameSiteCookie = isSecure ? "SameSite=None; Secure" : "SameSite=Lax";
 
       res.writeHead(200, {
         "Content-Type": "application/json",
-        "Set-Cookie": `${sessionStore.cookieName}=${sessionToken}; Path=/; HttpOnly; SameSite=Lax${secureAttr}`,
+        "Set-Cookie": `${sessionStore.cookieName}=${sessionToken}; Path=/; HttpOnly; ${sameSiteCookie}`,
       });
       res.end(
         JSON.stringify({
@@ -847,8 +901,8 @@ export async function startDaemonServer(options: DaemonServerOptions = {}) {
   });
 
   await new Promise<void>((resolve) => {
-    server.listen(port, "127.0.0.1", () => {
-      console.log(`[Kantha Daemon] Running on http://127.0.0.1:${port}`);
+    server.listen(port, host, () => {
+      console.log(`[Kantha Daemon] Running on http://${host}:${port}`);
       console.log(`[Kantha Daemon] Workspace bound to: ${workspacePath}`);
       console.log(`[Kantha Daemon] CLI token registered: ${cliManager.tokenPath}`);
       console.log(
